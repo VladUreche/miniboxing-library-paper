@@ -2,19 +2,21 @@
 \label{sec:intro}
 
 % Most optimizations => compromises => heuristics => opaque to programmers => hinders productivity
-Productivity in modern software development is achieved using high-level languages that allow programmers to focus on the problem domain and the requirements. The high-level programs are then transformed by compilers into low-level implementations that, when executed, produce the desired result. However, this translation is usually conservative and defensive. In checked languages for example, accessing an array twice in a sequence, even using the same index, produces two array bound checks.
 
-With programming languages targeting a higher and higher level  Therefore program optimizations are a crucial component of enabling productivity, since they bridge the performance gap between a high-level program and a low-level, hand-coded
+% Productiviy => high-level abstractions => redundant operations
+Productivity in modern software development is achieved using high-level languages that allow programmers to focus on the requirements in the problem domain. The high-level programs are then transformed by compilers into low-level implementations that, when executed, produce the desired result. However, this translation is usually conservative and defensive: in checked languages, for example, accessing an array twice using the same index produces two array bounds checks, even though the second one is redundant.
 
+% Productivity => optimizations (to close performance gap)
+With programming languages targeting higher and higher abstraction levels, program optimizations are becoming crucial component to enabling productivity. Since high-level program translations routinely contain redundant operations, optimizations are used to reduce the performance gap between abstractions and their low-level, hand-coded equivalent implementations.
 
-\topic{Program optimizations are compromises.} For example, inlining can be both good and bad.
+% Program optimizations are compromises.
+While some optimizations can be guaranteed to produce better results (e.g. eliminating redundant bounds checks), others tend to be compromises. For example, many opportunistic transformations, such as shape analysis, split the program into two paths: a fast path, where the opportunistic shape assumptions are satisfied and the program is optimized and a slow path, which has to execute slower and more general operations. This makes opportunistic transformations a compromise: they can either speed up a section of the program by optimizing it or slow it down, by performing additional checks and triggering additional transformations.
 
-\topic{Heuristics are key.}
-
-\topic{Ultimately, heuristics hinder productivity.}
+% Ultimately, heuristics hinder productivity.
+While opportunistic optimizations are a great tool to have in a compiler's toolbox, they are very difficult for the programmers to reason about: these transformations use opaque heuristics and can easily be invalidated by either new code additions or running the code for different types of data. Therefore, programmers treat these optimizations as black boxes and rely on benchmarks to reverse-engineer when and how the code is optimized. Ultimately, this affects productivity.
 
 % Show how an opaque transformation => transparent
-\topic{In this paper we explain how to shine a light on program transformations.}
+In this context, our paper explains how we offer programmers a window into the opportunistic   offering them compile-time warnings that explain what code prevents the optimization and how to  their code and how called miniboxing \cite{miniboxing}, which transforms generic classes and methods to allow them to handle unboxed primitive types.
 
 % Sections
 \topic{In the first part, we explain ...}
