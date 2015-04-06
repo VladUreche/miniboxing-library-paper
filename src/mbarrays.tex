@@ -1,0 +1,36 @@
+\section{MbArrays}
+\label{sec:mbarrays}
+
+% Arrays = Efficient bulk storage => The underlying container for many collections.
+
+% Challenge : Abstraction <=> An Array[T] class that offers performances and versatility : 
+% no ClassTag or other ways that involve having to set restrictions on the type parameter or having to modify pre-existing code in order to adjust itself to the use of this new array abstraction : 
+%	- If one day we want to use Array[T : ClassTag] instead of SomeCollection[T] => need to modify a lot of code because ClassTags need to be propagated => Breaks the pre-existing code.
+%	- If one day we want to use MbArray[T] instead of SomeCollection[T] => The pre-existing code will still work.
+
+% Problem 1 : Accessing arrays of a generic type in scala is inefficient (big switch on the runtime type of the array)
+
+% Partial Solution (Optimization) : Assume that array of primitive types are using the optimized JVM arrays : Array[Int] is int[], Array[Double] is double[] etc.
+
+% But this optimization prevents instantiation of arrays in a generic context, because we cannot know at compile time which of int[], double[], Object[], etc we need to allocate.
+
+% Option 1 : Using a ClassTag for the type parameter can give us this info at runtime.
+
+% Problem 2 : ClassTags are expensive to : 
+% 	- Synthesize (need to ask about this)
+% 	- Propagate (show an example of code)
+% 	- Store.
+% 		=>  people tend to avoid them.
+
+% Option 2 : Always allocate Object[] (Array[AnyRef]) and use .asInstanceOf[Array[T]] on the object array to make the user believe.
+
+% Problem 3 : This breaks the invariant Array[X] => x[] when X is a primitive. (show example of code that makes the JVM crash)
+% 	=> The array must not escape, but this can be hard to guarantee.
+
+% Problem 4 : This is bad for performances, because primitives will need to be boxed in order to fit in the Object[] array.
+
+% Option 3 : Miniboxing. If we are in a miniboxed context we can solve problem 4 by adding two other options on top of Array[AnyRef] : 
+% 	- Array[Long] if T is an integral type
+% 	- Array[Double] if T is a floating-point type
+% But problem 3 still not solved.
+% => MbArrays. Solves 3 by wrapping the array in a class that we control and we know won't let the underlying array escape.
