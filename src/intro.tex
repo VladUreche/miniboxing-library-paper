@@ -2,22 +2,35 @@
 \label{sec:intro}
 
 % Most optimizations => compromises => heuristics => opaque to programmers => hinders productivity
+Productivity in modern software development is achieved using high-level languages that allow programmers to focus on the problem domain and the requirements. The high-level programs are then transformed by compilers into low-level implementations that, when executed, produce the desired result. However, this translation is usually conservative and defensive. In checked languages for example, accessing an array twice in a sequence, even using the same index, produces two array bound checks.
+
+With programming languages targeting a higher and higher level  Therefore program optimizations are a crucial component of enabling productivity, since they bridge the performance gap between a high-level program and a low-level, hand-coded
+
+
+\topic{Program optimizations are compromises.} For example, inlining can be both good and bad.
+
+\topic{Heuristics are key.}
+
+\topic{Ultimately, heuristics hinder productivity.}
 
 % Show how an opaque transformation => transparent
+\topic{In this paper we explain how to shine a light on program transformations.}
 
 % Sections
+\topic{In the first part, we explain ...}
 
+\topic{In the second part, we explain ...}
+
+\topic{In the third part, we explain ...}
+
+\topic{Contributions.}
 % Contributions
 %  - describe the mechanisms we used to offer transparency
 %  - explain how we dealt with existing suboptimal API
 %  - benchmark our changes and show how, combined, the sum of the parts is greater than each individual part.
 
 % Conclusion
-
-% PL people: transparency program transformations heuristics explicit
-% programmers: performance advisories,
-
-A window into the program transformation state
+\topic{Conclusion.}
 
 
 
@@ -35,23 +48,3 @@ A window into the program transformation state
 %  - MbArray => MbArray + MbFunction
 %  - MbTuple => need benchmark
 % Related Work
-
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris diam erat, eleifend in euismod id, consequat a sem. Etiam cursus dictum dolor vel fermentum. In vel eros ut neque fermentum tempor. Nam mattis, ipsum at mollis semper, eros mi mattis diam, eget euismod metus elit ut ante. Vestibulum at ultricies arcu, vel porttitor metus. Nulla accumsan porta ullamcorper. Duis tincidunt pharetra arcu, ac bibendum dui iaculis id. Ut cursus mauris nec massa ornare ultrices.
-
-Donec varius maximus mi id consectetur. Proin nec erat sapien. Duis efficitur viverra erat eu cursus. Mauris ornare, mauris sed tincidunt consectetur, ante sem semper dolor, non blandit dui sem vel sapien. Sed tempus ex sit amet risus tristique, congue mattis dolor facilisis. Donec sodales purus sagittis, euismod massa pellentesque, maximus tortor. Vestibulum accumsan ligula sem, vel dictum tellus eleifend at. Praesent vehicula dolor et purus commodo, a iaculis mauris bibendum. Nunc cursus tincidunt velit sit amet commodo. Suspendisse eget urna purus. Phasellus mi odio, aliquam a dapibus eu, consectetur a ante. Interdum et malesuada fames ac ante ipsum primis in faucibus. Nulla posuere odio ipsum, nec fringilla libero ultrices vel. Sed placerat dui massa. Nullam porta diam sapien, vitae finibus tellus elementum a.
-
-Vivamus ac auctor ipsum, ac placerat ex. Sed at leo egestas lectus vestibulum congue ut maximus dolor. Phasellus nec dignissim neque. Nulla tempus condimentum malesuada. Praesent quis tempor nulla. Aliquam erat volutpat. Vestibulum semper magna ut felis fermentum, vel ornare ipsum blandit. Vivamus facilisis urna quis est malesuada mattis. Curabitur nisi nunc, blandit in massa et, blandit placerat nisi. Vivamus quam lorem, vulputate eu massa nec, ultrices volutpat magna.
-
-Curabitur eros massa, convallis id turpis quis, faucibus sagittis tortor. Aenean sapien tellus, pharetra et scelerisque ut, maximus quis quam. Integer ornare mauris nulla, id fermentum nibh ultrices non. Cras non finibus orci. Proin erat justo, mattis volutpat euismod in, cursus dictum augue. Vivamus sed tellus sit amet ipsum consectetur egestas. Fusce massa ex, eleifend ut enim nec, sollicitudin elementum mi. Nam lobortis euismod justo, ac iaculis turpis auctor nec. Aliquam non consequat diam. Curabitur at justo a mauris consequat finibus. In diam neque, pretium a luctus id, auctor ut est.
-
-Vivamus varius ut lacus non sollicitudin. Nunc condimentum in diam nec consectetur. Quisque eget facilisis orci, eget lacinia magna. Phasellus placerat dapibus nulla non tincidunt. Vestibulum gravida aliquam cursus. Quisque varius nisi enim, auctor aliquet risus vehicula at. Ut id sollicitudin neque, id scelerisque neque. Aenean id lacus lacus. Nullam risus ipsum, fringilla sit amet varius sed, molestie sed erat.
-
-Suspendisse sit amet lorem mauris. Nam sed consequat nulla. Vivamus dignissim odio dui, quis sollicitudin eros lacinia eget. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed volutpat pulvinar orci non interdum. Praesent laoreet porttitor neque sit amet dapibus. Pellentesque lobortis urna eu lorem laoreet laoreet. Aenean pellentesque vitae purus eu iaculis. Suspendisse a ligula elementum, elementum nisl vel, scelerisque mi. Quisque lectus neque, tempus eu risus non, rutrum porttitor nibh. Suspendisse potenti. Vivamus at nibh enim. Pellentesque est tellus, iaculis id gravida ac, scelerisque in lorem. Aliquam consequat, augue ac interdum tempus, ex sapien viverra tortor, a lobortis enim nisl eget magna.
-
-Maecenas consequat hendrerit sem ac viverra. Fusce et volutpat dolor, et mollis felis. Donec ante metus, sollicitudin non libero sed, fringilla dictum metus. Aliquam condimentum et diam vitae malesuada. Donec sed ullamcorper libero. Phasellus euismod ligula quis nulla ultricies viverra. Praesent malesuada urna ante, quis feugiat mauris ornare id.
-
-Integer sit amet purus leo. Aliquam semper bibendum rutrum. Fusce ornare nisl eget arcu sollicitudin venenatis. In egestas sed nulla in malesuada. Proin ante arcu, luctus ut efficitur ut, commodo vel massa. Etiam ullamcorper vitae libero a tempus. Mauris a ante porttitor, egestas velit eget, elementum nulla. Suspendisse eleifend ex pellentesque diam interdum sollicitudin. Ut malesuada imperdiet iaculis. Suspendisse id fringilla metus. In id urna finibus, ultrices nibh ac, semper tortor. Quisque facilisis nunc nec odio condimentum posuere. Vestibulum placerat tellus et tincidunt molestie. Praesent sodales odio at libero facilisis tincidunt. Duis risus lacus, sagittis eu pellentesque a, lobortis eu justo.
-
-Sed sollicitudin, mauris in tincidunt laoreet, odio quam elementum ex, id eleifend sem odio vel risus. Suspendisse potenti. Nulla commodo, odio sed ultricies pellentesque, libero dolor iaculis nisi, sed ultrices lorem leo eget arcu. Nam nunc lectus, ornare id quam in, imperdiet aliquet augue. Morbi mauris massa, fermentum ut purus quis, interdum hendrerit felis. Vestibulum eget tincidunt tellus. Cras ultricies mi imperdiet, facilisis metus at, lacinia nisl. Integer dictum in justo ut malesuada.
-
-Morbi dignissim, sem ac iaculis convallis, mauris nibh consectetur nisl, non varius justo felis at ex. Maecenas augue mi, varius ut lacus dapibus, venenatis vulputate metus. Suspendisse hendrerit nibh eu tristique pellentesque. Mauris egestas ipsum id nisl tincidunt, a ultrices nisi varius. Cras ut libero tristique dolor sodales dapibus vitae sed leo. Fusce fermentum magna non nibh bibendum, eu hendrerit velit tempor. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Praesent id est imperdiet, lacinia diam non, ullamcorper neque. Sed vehicula ex et lacinia vehicula. Donec feugiat semper ex, vel molestie tortor laoreet vel. Etiam id tempus nunc, et porta leo. Quisque semper sodales convallis.
