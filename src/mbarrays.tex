@@ -2,43 +2,45 @@
 \label{sec:mbarrays}
 
 % Arrays = Efficient bulk storage => The underlying container for many collections.
-Arrays provide efficient memory usage and constant random access time, thanks to the elements being stored in a contiguous fashion. This is also optimal from a low level perspective as it cooperates well with caches, thanks to the spatial locality of the elements. For these reasons, arrays are used as the undelying storage in many high level collections, and are the container of choice for implementations of algorithms where performance is critical. Since by definition elements of an array are stored contiguously in memory, their sizes must be known at compile time in order for the compiler to generate the right instructions for array allocation or element retrieval. For example, assuming an integer is encoded on 4 bytes, a compiler will know that the $n^\text{th}$ element of an array of integers which first element is stored at the adress $a$ can be accessed by dereferencing the address $a + 4*n$.
+Arrays provide efficient memory usage and constant random access time, thanks to the elements being stored in a contiguous fashion. This is also optimal from a low level perspective as it cooperates well with processor caches, thanks to the spatial locality of the elements. For these reasons, arrays are commonly used as the underlying storage in high level collections, and are the container of choice for implementing performance-critical algorithms.
+
+Since elements of an array are stored contiguously in memory, accessing an element requires knowing its size: assuming an integer is encoded on 4 bytes, a compiler will know that the $n^\text{th}$ element of an integer array stored at the address $a$ can be accessed by de-referencing the address $a + 4*n$. Or, in the case of a higher-level virtual machine, such as the JVM, to avoid tying the implementation to architecture details, each primitive array, such as |int[]| or |double[]| has its own bytecodes to access and update elements, which de-reference the correct address for the given architecture.
 
 % Challenge : Abstraction <=> An Array[T] class that offers performances and versatility :
 % no ClassTag or other ways that involve having to set restrictions on the type parameter or having to modify pre-existing code in order to adjust itself to the use of this new array abstraction :
 %	- If one day we want to use Array[T : ClassTag] instead of SomeCollection[T] => need to modify a lot of code because ClassTags need to be propagated => Breaks the pre-existing code.
 %	- If one day we want to use MbArray[T] instead of SomeCollection[T] => The pre-existing code will still work.
 
-Unfortunately, while it offers optimal performances and memory usage, it also hardens significantly the task of abstracting over the type of elements that the array contains. Indeed, different types of elements will yield in different sizes for the elements, and thus the compiler will need to generate different instructions for array access depending on the size of the elements the array contains. In practice, such abstractions are necessary for writing softwares in a productive manner, and therefore different workarounds have been found. For example, we can cite the template-based way, which is used by languages like C++, but in this paper we're interested in how languages based on the JVM and more specifically the Scala programming language deal with this problem, and how we can improve the current way of doing it.
+Unfortunately, while using primitive arrays offers optimal performance and memory usage, it also makes it difficult to abstract over the type of elements in the array: different types of elements have different sizes so the compiler needs to generate different instructions for array access depending on its element type. In practice, abstracting over the elements in arrays is essential for writing generic data structures, so language developers proposed different approaches to enable abstraction. One example is the template-based way, used in C++ and .NET, where generics are instantiated to primitive types, resolving their size before execution. On the other hand, languages where generics are compiled with erasure, such as Scala, lose the information necessary to resolve the object size at runtime and need to employ more complex mechanisms.
 
 % Problem 1 : Accessing arrays of a generic type in scala is inefficient (big switch on the runtime type of the array)
+A naive solution, commonly used in dynamic language interpreters which lack static information, is to convert all values stored in the array to object references, through boxing. This fixes the size of objects, since only references are stored in the array regardless of the primitive type. However, compact storage and locality are lost, since boxed primitives contain the additional object headers and can be allocated anywhere on the heap.
 
-Before tackling the next topic, assume the following Scala code.
-
-\begin{lstlisting-nobreak}
-  def retrieve[T](a: Array[T], i: Int): T = {
-    a(i)
-  }
-\end{lstlisting-nobreak}
-
-The bytecode that is generated by the Scala compiler for the code above is equivalent to what would be generated for the code below :
+A much better approach transforms the Scala code that accesses or updates generic arrays:
 
 \begin{lstlisting-nobreak}
-  def retrieve(a: AnyRef, i: Int): Any = {
-    a match {
-      case x: Array[AnyRef] => x(i).asInstanceOf[Any]
-      case x: Array[Int] => x(i).asInstanceOf[Any]
-      case x: Array[Double] => x(i).asInstanceOf[Any]
-      // and so on for the 10 primitives types of Scala...
-    }
-  }
+ def first[T](a: Array[T]): T = a(0)
 \end{lstlisting-nobreak}
 
-As one can see, the generated code is suboptimal, because each generic array access results in a long and costly match over the type of the array, which do affect runtime performances badly.
+The equivalent Scala source code for the low-level bytecode generated by the Scala compiler is:
+
+\begin{lstlisting-nobreak}
+ def first(a: Object): Any =
+   a match {
+     case x: Array[Object] => x(0) // size = reference
+     case x: Array[Int]           => x(0) // size = integer
+     case x: Array[Double] => x(0) // size = double
+     // and so on for all the primitive types of Scala
+   }
+\end{lstlisting-nobreak}
+
 
 % Partial Solution (Optimization) : Assume that array of primitive types are using the optimized JVM arrays : Array[Int] is int[], Array[Double] is double[] etc.
+With this transformation, accessing the array becomes more involved: the program has to match over the possible primitive arrays, and only then it can access the element. This slows down program execution, but it also enforces a strong invariant: a Scala value of type |Array[Int]| is always represented as the JVM primitive integer array, |int[]|, and never as |Array[java.lang.Integer]|, which would require boxing the primitive values. This invariant guarantees that, outside the generic context, array access/update is efficient: an |Array[Int]| is represented as the JVM primitive |int[]| array, which allows Scala to access and update elements without matching its type. Therefore, from a language perspective, programmers only pay the extra overhead when using arrays with generics.
 
-In order to understand the reason for such transformation, it is necessary to understand how Scala uses the optimized JVM versions of primitive type arrays when dealing with Scala arrays of primitive types. That is, the Scala compiler will assume that the actual runtime type of an |Array[Int]| will not be |Array[java.lang.Integer]| -- as it would require boxing the primitive values and therefore break spatial locality -- but its unboxed variant |int[]|, which itself does present the advantages mentionned earlier such as spatial locality of the datas and for which the JVM knows specific bytecode instructions that are optimized for this specific type of array. This raises the problem observed above, as the different primitive type arrays such as |int[]| or |float[]| are different objects that require their own specific instructions for element accesses. Therefore, the only way to execute the right instructions for retrieving an element off of a generic array is to switch over the type of this array.
+Another thing to notice is that the |Array[T]| type in the signature of |first| is transformed into |Object|: at the JVM level, primitive arrays such as |int[]|, |float[]| and |Object[]| have a single common parent class, which is |java.lang.Object|. This explains why there is a need to match the primitive array type: the |Array| class offered by Scala does not really exist, it's simply an abstraction over the primitive arrays offered by the JVM.
+
+\vlad{I didn't go through the rest:}
 
 % But this optimization prevents instantiation of arrays in a generic context, because we cannot know at compile time which of int[], double[], Object[], etc we need to allocate.
 
