@@ -3,10 +3,14 @@
 
 % Arrays = Efficient bulk storage => The underlying container for many collections.
 
+Arrays are one of the oldest data structures that has been used in programs as they provide efficient memory usage and constant random access times that are optimal from a low level perspective for computer architectures of today. For these reasons, they constitue the pedestal of many more high level collections, and more generally are the container of choice for implementations of algorithms where performance is critical. Since by definition elements of an array are stored contiguously in memory, their sizes must be known at compile time in order for the compiler to generate the right instructions for array instantiation or element retrieval. For example, assuming an integer is encoded on 4 bytes, a compiler will know that the $n^th$ element of an array of integers which first element is stored at the adress $a$ can be accessed by dereferencing the address $a + 4*n$.
+
 % Challenge : Abstraction <=> An Array[T] class that offers performances and versatility : 
 % no ClassTag or other ways that involve having to set restrictions on the type parameter or having to modify pre-existing code in order to adjust itself to the use of this new array abstraction : 
 %	- If one day we want to use Array[T : ClassTag] instead of SomeCollection[T] => need to modify a lot of code because ClassTags need to be propagated => Breaks the pre-existing code.
 %	- If one day we want to use MbArray[T] instead of SomeCollection[T] => The pre-existing code will still work.
+
+Unfortunately, while it offers optimal performances and memory usage, it also hardens significantly the task of abstracting over the type of elements that the array contains. Indeed, different types of elements will yield in different sizes for the elements, and thus the compiler will need to generate different instructions for array access depending on the size of the elements the array contains. In practice, such abstractions are necessary for writing softwares in a productive manner, and therefore different solutions have been found. In this paper, we're interested in how languages based on the JVM and more specifically the Scala programming language deal with this problem, and how we can improve the current way of doing it. 
 
 % Problem 1 : Accessing arrays of a generic type in scala is inefficient (big switch on the runtime type of the array)
 
