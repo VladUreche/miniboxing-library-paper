@@ -3,7 +3,7 @@
 
 % Arrays = Efficient bulk storage => The underlying container for many collections.
 
-Arrays are one of the oldest data structures that have been used in programs as they provide efficient memory usage and constant random access times that are optimal from a low level perspective for computer architectures of today, one of the reasons being that it cooperates well with caches thanks to the spatial locality of the elements. For these reasons, they constitue the pedestal of many more high level collections, and more generally are the container of choice for implementations of algorithms where performance is critical. Since by definition elements of an array are stored contiguously in memory, their sizes must be known at compile time in order for the compiler to generate the right instructions for array allocation or element retrieval. For example, assuming an integer is encoded on 4 bytes, a compiler will know that the $n^th$ element of an array of integers which first element is stored at the adress $a$ can be accessed by dereferencing the address $a + 4*n$.
+Arrays are one of the oldest data structures that have been used in programs as they provide efficient memory usage and constant random access times that are optimal from a low level perspective for computer architectures of today, one of the reasons being that it cooperates well with caches thanks to the spatial locality of the elements. For these reasons, they constitue the pedestal of many more high level collections, and more generally are the container of choice for implementations of algorithms where performance is critical. Since by definition elements of an array are stored contiguously in memory, their sizes must be known at compile time in order for the compiler to generate the right instructions for array allocation or element retrieval. For example, assuming an integer is encoded on 4 bytes, a compiler will know that the $n^\text{th}$ element of an array of integers which first element is stored at the adress $a$ can be accessed by dereferencing the address $a + 4*n$.
 
 % Challenge : Abstraction <=> An Array[T] class that offers performances and versatility : 
 % no ClassTag or other ways that involve having to set restrictions on the type parameter or having to modify pre-existing code in order to adjust itself to the use of this new array abstraction : 
@@ -74,9 +74,9 @@ Suppose we want to start using a generic $Array$ instead of $SomeCollection$. We
 \begin{lstlisting-nobreak} 
   new SomeCollection[T](10) 
 \end{lstlisting-nobreak}
- 
+
 by
- 
+
 \begin{lstlisting-nobreak} 
   new Array[T : `ClassTag`](10) 
 \end{lstlisting-nobreak}
@@ -92,11 +92,14 @@ But for a $ClassTag$ to be available in the $baz$ function, it must have been av
 As one can see, this creates the need to propagate the $ClassTag$ from the bottom -- therefore breaking pre-existing code -- and to store it in the stack each time one of the function is called, introducing runtime overhead affecting memory and performances. On top of that, a $ClassTag$ describing the type parameter has to be synthesized at each site a generic class is instantiated, thus producing many anonymous classes polluting the bytecode and even more overhead when the generic class is instanciated at runtime.  
 
 % Option 2 : Always allocate Object[] (Array[AnyRef]) and use .asInstanceOf[Array[T]] on the object array to make the user believe.
-
 % Problem 3 : This breaks the invariant Array[X] => x[] when X is a primitive. (show example of code that makes the JVM crash)
 % 	=> The array must not escape, but this can be hard to guarantee.
 
+Another way to deal with this issue is to always instantiate $Array[AnyRef]$ and make the compiler believe it is actually an $Array[T]$ by using $asInstanceOf[Array[T]]$ on the array. As one could imagine, this has some major drawbacks. One of them being that it breaks the invariant stated earlier which says that an $Array[Int]$ must be seen by the compiler as $int[]$, and equivalently for the other primitive type arrays. In our case, $Array[Int]$ would actually be an $Array[AnyRef]$. Therefore, accessing an element of the array will make the JVM crash. We could fix this by guaranteeing that the array will not escape from what is under our control, which cannot be done trivially. 
+
 % Problem 4 : This is bad for performances, because primitives will need to be boxed in order to fit in the Object[] array.
+
+The other downside of this way of doing is that it will restrain performance when dealing with arrays of primitive types, as the primitive values will have to be boxed in order to fit in an $Array[AnyRef]$, therefore bringing it back to the problems stated earlier. 
 
 % Option 3 : Miniboxing. If we are in a miniboxed context we can solve problem 4 by adding two other options on top of Array[AnyRef] : 
 % 	- Array[Long] if T is an integral type
