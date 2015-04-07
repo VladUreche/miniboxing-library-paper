@@ -40,70 +40,107 @@ With this transformation, accessing the array becomes more involved: the program
 
 Another thing to notice is that the |Array[T]| type in the signature of |first| is transformed into |Object|: at the JVM level, primitive arrays such as |int[]|, |float[]| and |Object[]| have a single common parent class, which is |java.lang.Object|. This explains why there is a need to match the primitive array type: the |Array| class offered by Scala does not really exist, it's simply an abstraction over the primitive arrays offered by the JVM.
 
-\vlad{I didn't go through the rest:}
+\subsection{Instantiating Arrays}
 
 % But this optimization prevents instantiation of arrays in a generic context, because we cannot know at compile time which of int[], double[], Object[], etc we need to allocate.
+Although the array representation invariant looks like a good deal so far, it introduces an unexpected problem: how to instantiate generic arrays? Exactly like accessing or updating an array, instantiating one must abide by the array invariant. Yet, with the erasure transformation, all traces of a generic type parameter |T| are removed, transforming the code:
 
-Now that we have shown why transformations such as the one above were necessary, we will present another problem introduced by this representation of primitive type arrays, namely, generic array instantiation. In this case, it is not possible to instantiate the optimized version of primitive type arrays in a generic context, because this would require having informations about the type parameter at runtime, which is not inherently possible due to the type erasure process performed by compilers that compile for the JVM.
+\begin{lstlisting-nobreak}
+ def newArray[T] = new Array[T](10)
+\end{lstlisting-nobreak}
+
+\noindent
+into:
+
+\begin{lstlisting-nobreak}
+ def newArray() = /* depends on T, which is erased */
+\end{lstlisting-nobreak}
+
+The |newArray| method should be able to produce any primitive array, based on the type argument of |newArray|:
+
+\begin{lstlisting-nobreak}
+ val a1: Array[Long] = newArray[Long] /* long[] */
+ val a1: Array[Char] = newArray[Char] /* char[] */
+\end{lstlisting-nobreak}
 
 % Option 1 : Using a ClassTag for the type parameter can give us this info at runtime.
+\subsubsection{Reified types.} To address this issue, Scala offers the |ClassTag| mechanism, which can be used to provide runtime information about a type parameter. This allows |newArray| to produce the correct primitive type:
 
-To address this issue, Scala offers the |ClassTag| mechanism, which can be used to provide informations at runtime about a type parameter. Although it started from a good idea, it is often not used in practice because they come up with a cost that developpers are not necessarily prone to pay. Indeed, |ClassTags| are expensive to:
+\begin{lstlisting-nobreak}
+ def newArray[T: `ClassTag`] = new Array[T](10)
+\end{lstlisting-nobreak}
+
+\noindent
+is compiled to:
+
+\begin{lstlisting-nobreak}
+ def newArray(`tag: ClassTag`): AnyRef = `tag`.newArray(10)
+\end{lstlisting-nobreak}
 
 % Problem 2 : ClassTags are expensive to :
-% 	- Synthesize (need to ask about this)
-% 	- Propagate (show an example of code)
-% 	- Store.
-% 		=>  people tend to avoid them.
-
-\begin{itemize}
-  \item Synthesize.
-  \item Propagate.
-  \item Store.
-\end{itemize}
-
-To illustrate these items, consider the following code :
+%   - Synthesize (need to ask about this)
+%   - Propagate (show an example of code)
+%   - Store.
+%     =>  people tend to avoid them.
+Since the |ClassTag| object carries runtime information about the type |T|, it can instantiate the correct primitive array. Still, this approach is rarely used in practice because |ClassTag|s are expensive to synthesize, propagate and store.
+To illustrate these items, consider the following code:
 
 \begin{lstlisting-nobreak}
   def foo[T] = bar[T]
   def bar[T] = baz[T]
-  def baz[T] = new SomeCollection[T](10)
+  def baz[T] = new Vector[T](10)
 \end{lstlisting-nobreak}
 
-Suppose we want to start using a generic |Array| instead of |SomeCollection|. We will replace
+If we want to create a generic |Array| instead of the |Vector|:
 
 \begin{lstlisting-nobreak}
-  new SomeCollection[T](10)
+  def baz[T] = `new Array[T](10)`
 \end{lstlisting-nobreak}
 
-by
+But this requires |baz| to have a |ClassTag| passed in:
 
 \begin{lstlisting-nobreak}
-  new Array[T : `ClassTag`](10)
+  def baz[T: `ClassTag`] = `new Array[T](10)`
 \end{lstlisting-nobreak}
 
-But for a |ClassTag| to be available in the |baz| function, it must have been available at the site |baz| was called, that is, in |bar|, and so on. The code presented above would have to be written this way:
+Therefore, to call method |bar|, the caller needs to pass in a |ClassTag| object. When the call is made from non-generic code (e.g. |bar[Int]|), the |ClassTag| is synthesize right away from the type argument. This is the cost of synthesis. But there is another cost, of propagation: the |bar| method is also a caller of |baz|, but it's generic. Since its type parameter |T| is erased, the compiler can't synthesize a |ClassTag| object. Instead, it must require its callers to provide it:
+
+\begin{lstlisting-nobreak}
+  def bar[T: `ClassTag`] = baz[T]
+\end{lstlisting-nobreak}
+
+Similarly, |foo| must require the |ClassTag| object to be passed from its callers, thus producing the following code:
 
 \begin{lstlisting-nobreak}
   def foo[T: `ClassTag`] = bar[T]
   def bar[T: `ClassTag`] = baz[T]
-  def baz[T: `ClassTag`] = new SomeCollection[T](10)
+  def baz[T: `ClassTag`] = `new Array[T](10)`
 \end{lstlisting-nobreak}
 
-As one can see, this creates the need to propagate the |ClassTag| from the bottom -- therefore breaking pre-existing code -- and to store it in the stack each time one of the function is called, introducing runtime overhead affecting memory and performances. On top of that, a |ClassTag| describing the type parameter has to be synthesized at each site a generic class is instantiated, thus producing many anonymous classes polluting the bytecode and even more overhead when the generic class is instanciated at runtime.
+This shows that generic code must be transitively modified to propagate |ClassTag| objects in order to allow instantiating an arrays, explaining the cost of propagation. Finally, when dealing with objects, |ClassTag| objects have to be stored as fields in the object itself, adding to the program's memory footprint, explaing the storage cost.
 
 % Option 2 : Always allocate Object[] (Array[AnyRef]) and use .asInstanceOf[Array[T]] on the object array to make the user believe.
 % Problem 3 : This breaks the invariant Array[X] => x[] when X is a primitive. (show example of code that makes the JVM crash)
 % 	=> The array must not escape, but this can be hard to guarantee.
 
-Another way to deal with this issue is to always instantiate |Array[AnyRef]| and make the compiler believe it is actually an |Array[T]| by using |asInstanceOf[Array[T]]| on the array. As one could imagine, this has some major drawbacks. One of them being that it breaks the invariant stated earlier which says that an |Array[Int]| must be seen by the compiler as |int[]|, and equivalently for the other primitive type arrays. In our case, |Array[Int]| would actually be an |Array[AnyRef]|. Therefore, accessing an element of the array will make the JVM crash. We could fix this by guaranteeing that the array will not escape from what is under our control, which cannot be done trivially.
+\subsubsection{Breaking the invariant.} Another way to deal with this issue, without using |ClassTag|s, is to always instantiate |Array[AnyRef]| and force the compiler believe it is an |Array[T]|:
 
-% Problem 4 : This is bad for performances, because primitives will need to be boxed in order to fit in the Object[] array.
+\begin{lstlisting-nobreak}
+  def baz[T] = `new Array[AnyRef](10).asInstancOf[Array[T]]`
+\end{lstlisting-nobreak}
 
-The other downside of this way of doing is that it will restrain performance when dealing with arrays of primitive types, as the primitive values will have to be boxed in order to fit in an |Array[AnyRef]|, therefore bringing it back to the problems stated earlier.
+This approach forces boxing all elements, so it is known to affect performance. But, even worse, it breaks the array invariant: if the type parameter |T| is instantiated by |Int|, the returned array has type |Array[Int]| but its value is of JVM type |Object[]| instead of |int[]|.
+
+Therefore, the approach can only be used in scenarios where it is guaranteed to not escape to generic code. In practice, this approach is used to implement many of the generic collections in the Scala library.
+
+% \vlad{mentioned this earlier}
+% % Problem 4 : This is bad for performances, because primitives will need to be boxed in order to fit in the Object[] array.
+%
+% The other downside of this way of doing is that it will restrain performance when dealing with arrays of primitive types, as the primitive values will have to be boxed in order to fit in an |Array[AnyRef]|, therefore bringing it back to the problems stated earlier.
 
 % Option 3 : Miniboxing. If we are in a miniboxed context we can solve problem 4 by adding two other options on top of Array[AnyRef] :
 % 	- Array[Long] if T is an integral type
 % 	- Array[Double] if T is a floating-point type
 % But problem 3 still not solved.
 % => MbArrays. Solves 3 by wrapping the array in a class that we control and we know won't let the underlying array escape.
+\subsubsection{The miniboxed array approach.}
