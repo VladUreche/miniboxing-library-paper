@@ -59,8 +59,8 @@ into:
 The |newArray| method should be able to produce any primitive array, based on the type argument of |newArray|:
 
 \begin{lstlisting-nobreak}
- val a1: Array[Long] = newArray[Long] /* long[] */
- val a1: Array[Char] = newArray[Char] /* char[] */
+ val a1: Array[Long] /* = long[] */ = newArray[Long]
+ val a2: Array[Char] /* = char[] */= newArray[Char]
 \end{lstlisting-nobreak}
 
 % Option 1 : Using a ClassTag for the type parameter can give us this info at runtime.
@@ -74,7 +74,7 @@ The |newArray| method should be able to produce any primitive array, based on th
 is compiled to:
 
 \begin{lstlisting-nobreak}
- def newArray(`tag: ClassTag`): AnyRef = `tag`.newArray(10)
+ def newArray(`tag: ClassTag`) = `tag`.newArray(10)
 \end{lstlisting-nobreak}
 
 % Problem 2 : ClassTags are expensive to :
@@ -119,10 +119,11 @@ Similarly, |foo| must require the |ClassTag| object to be passed from its caller
 
 This shows that generic code must be transitively modified to propagate |ClassTag| objects in order to allow instantiating an arrays, explaining the cost of propagation. Finally, when dealing with objects, |ClassTag| objects have to be stored as fields in the object itself, adding to the program's memory footprint, explaing the storage cost.
 
+
+
 % Option 2 : Always allocate Object[] (Array[AnyRef]) and use .asInstanceOf[Array[T]] on the object array to make the user believe.
 % Problem 3 : This breaks the invariant Array[X] => x[] when X is a primitive. (show example of code that makes the JVM crash)
 % 	=> The array must not escape, but this can be hard to guarantee.
-
 \subsubsection{Breaking the invariant.} Another way to deal with this issue, without using |ClassTag|s, is to always instantiate |Array[AnyRef]| and force the compiler believe it is an |Array[T]|:
 
 \begin{lstlisting-nobreak}
@@ -138,9 +139,47 @@ Therefore, the approach can only be used in scenarios where it is guaranteed to 
 %
 % The other downside of this way of doing is that it will restrain performance when dealing with arrays of primitive types, as the primitive values will have to be boxed in order to fit in an |Array[AnyRef]|, therefore bringing it back to the problems stated earlier.
 
-% Option 3 : Miniboxing. If we are in a miniboxed context we can solve problem 4 by adding two other options on top of Array[AnyRef] :
-% 	- Array[Long] if T is an integral type
-% 	- Array[Double] if T is a floating-point type
-% But problem 3 still not solved.
-% => MbArrays. Solves 3 by wrapping the array in a class that we control and we know won't let the underlying array escape.
-\subsubsection{The miniboxed array approach.}
+
+
+\subsubsection{Specialized arrays.}
+
+% If the code is specialized, array access is automatically optimized:
+%   def first[@specialized T](a: Array[T]): T = a(0)
+% will have a specialized version:
+%   def first_int(a: Array[Int]): Int = a(0)
+% since a is known to be an Array[Int] => fast access/update
+
+% Generic creation problem remains, due to the opportunistic nature of specialization:
+%  * C[Int] may mean C_int, the specialized one, or C, the erased one, depending on the creation context
+%  * but Array[Int] can only mean int[], not Object[]
+% therefore ClassTags are still needed.
+
+% Wrap up: what we've seen
+%  - ClassTag approach       => advantage:    solves array instantiation problem
+%                               disadvantage: has to carry ClassTag objects
+%  - invariant approach      => advantage:    solves array instantiation problem
+%                               disadvantage: array must not escape
+%  - specialization approach => advantage:    optimize access
+%                               disadvantage: opportunistic nature => does not solve the instantiation problem
+
+\subsubsection{Miniboxed arrays.}
+
+% a natural question: can we combine the three approaches before to get something working?
+
+% enter MbArray:
+%  - invariant approach      => advantage:    solves array instantiation problem
+%                               disadvantage: array must not escape
+%    solution: enclose the class into our own MbArray object, which can escape
+
+
+%  - ClassTag approach       => advantage:    solves array instantiation problem
+%                               disadvantage: has to carry ClassTag objects
+%    solution: we can use the miniboxed information to specialize the internal array
+%              in the MbArray object: in the miniboxed version for long => Array[Long],
+%                                     in the miniboxed version for double => Array[Double]
+
+%  - specialization approach => advantage:    optimize access
+%                               disadvantage: opportunistic nature => does not solve the instantiation problem
+%    solution: optimistically assume the MbArray object contains the specialized array. If so => fast path, if not => slow path
+
+% Coupled whith performance advisiories, we can direct the programmer away from the slow path => only going on the fast path :)
