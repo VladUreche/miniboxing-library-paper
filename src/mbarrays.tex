@@ -14,7 +14,7 @@ Unfortunately, while it offers optimal performances and memory usage, it also ha
 
 % Problem 1 : Accessing arrays of a generic type in scala is inefficient (big switch on the runtime type of the array)
 
-Before abording the next topic, assume the following Scala code.
+Before tackling the next topic, assume the following Scala code.
 
 \begin{lstlisting-nobreak}
   def retrieve[T](a: Array[T], i: Int): T = {
@@ -43,13 +43,53 @@ In order to understand the reason for such transformation, it is necessary to un
 
 % But this optimization prevents instantiation of arrays in a generic context, because we cannot know at compile time which of int[], double[], Object[], etc we need to allocate.
 
+Now that we have shown why transformations such as the one above were necessary, we will present another problem introduced by this representation of primitive type arrays, namely, generic array instantiation. In this case, it is not possible to instantiate the optimized version of primitive type arrays in a generic context, because this would require having informations about the type parameter at runtime, which is not inherently possible due to the type erasure process performed by compilers that compile for the JVM. 
+
 % Option 1 : Using a ClassTag for the type parameter can give us this info at runtime.
+
+To address this issue, Scala offers the $ClassTag$ mechanism, which can be used to provide informations at runtime about a type parameter. Although it started from a good idea, it is often not used in practice because they come up with a cost that developpers are not necessarily prone to pay. Indeed, $ClassTags$ are expensive to:
 
 % Problem 2 : ClassTags are expensive to : 
 % 	- Synthesize (need to ask about this)
 % 	- Propagate (show an example of code)
 % 	- Store.
 % 		=>  people tend to avoid them.
+
+\begin{itemize}
+  \item Synthesize.
+  \item Propagate.
+  \item Store.
+\end{itemize}
+
+To illustrate these items, consider the following code : 
+
+\begin{lstlisting-nobreak}
+  def foo[T] = bar[T]
+  def bar[T] = baz[T]
+  def baz[T] = new SomeCollection[T](10)
+\end{lstlisting-nobreak}
+
+Suppose we want to start using a generic $Array$ instead of $SomeCollection$. We will replace
+ 
+\begin{lstlisting-nobreak} 
+  new SomeCollection[T](10) 
+\end{lstlisting-nobreak}
+ 
+by
+ 
+\begin{lstlisting-nobreak} 
+  new Array[T : `ClassTag`](10) 
+\end{lstlisting-nobreak}
+
+But for a $ClassTag$ to be available in the $baz$ function, it must have been available at the site $baz$ was called, that is, in $bar$, and so on. The code presented above would have to be written this way:
+ 
+\begin{lstlisting-nobreak}
+  def foo[T: `ClassTag`] = bar[T]
+  def bar[T: `ClassTag`] = baz[T]
+  def baz[T: `ClassTag`] = new SomeCollection[T](10)
+\end{lstlisting-nobreak}
+
+As one can see, this creates the need to propagate the $ClassTag$ from the bottom -- therefore breaking pre-existing code -- and to store it in the stack each time one of the function is called, introducing runtime overhead affecting memory and performances. On top of that, a $ClassTag$ describing the type parameter has to be synthesized at each site a generic class is instantiated, thus producing many anonymous classes polluting the bytecode and even more overhead when the generic class is instanciated at runtime.  
 
 % Option 2 : Always allocate Object[] (Array[AnyRef]) and use .asInstanceOf[Array[T]] on the object array to make the user believe.
 
