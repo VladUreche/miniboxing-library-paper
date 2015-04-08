@@ -1,0 +1,143 @@
+
+\section{Improving The Programmer Experience}
+\paragraph{}
+In this section, we will discuss how to improve programmer experience by giving them compile-time performance advisories and exposing internal state at run-time. First, we will present the need for performance advisories and introduce the different types of advisories that exist today. A discussion about the motivation for introducing the MbReflection API will follow, along with examples to demonstrate its functionality.
+\subsection{Performance Advisories}
+\paragraph{}
+%what are the performance advisories and what is their purpose
+% 2 problems:
+%	- programmer not aware of possible optimizations in the code
+%	- programmer not aware of limitations of optimizer
+% Silent failure - using performance advisories this is avoided
+% Shown in form of compile-time warnings
+% Improve code performance up to 5 times
+A fundamentally difficult problem with using specialization is determining when the code has reverted to using boxed primitives. Having specialized code use boxed primitives can be due to technical or design limitations, which can lead to seemingly correct compilation of the code, but sub-optimal. These limitations can occur at different levels, from well-understood design decisions that sacrifice certain code patterns, to purely technical limitations where the problem is simply not worth the effort to solve.
+\paragraph{}
+When limitations are reached, the optimization process silently fails, which doesn't give the user any useful information about what happened. Instead of silently failing, specialization can provide the user with possible workarounds and explanations about the optimization failure. This is exactly the function of performance advisories in the Miniboxing plugin. They aim to provide the user with useful compile-time warnings that explain why code could not be fully optimized by specializing generics and detail how the code can be improved in order to achieve the best performance.
+\paragraph{}
+Besides limitations of the optimizer, it is also possible for the code to be written in a manner that does not fully utilize compiler's optimization potential. Performance advisories of Minibox plugin will assist the programmer in this situation by exposing code where the plugin wasn't able to correctly specialize generics, pointing out exactly what the problem was and suggesting ways to fix it. Introduced performance advisories play an important role by helping improve the performance of a program significantly. Benchmarks show that applying the compilers suggested changes can improve overall performance by up to 5x.
+\paragraph{}
+%2 types of them - backward and forward
+% On the high level - two types of warnings saying that code is not optimal
+%	- backwards => at the use site optimizer realizes that code can be optimized by adding annotation at the definition site, by going backward in the code
+%	- forward => from the definition site, checks if code is optimized on the use site
+At a high level, there are two types of sub-optimal code warnings, backward and forward; both try to tell a user when code can be optimized to gain better performance. Backwards warnings refer to those that can identify when code can be optimized at the use site, and go back and suggest adding the appropriate annotation at the definition site. The examples below illustrate this:
+
+\begin{lstlisting-nobreak}
+scala> def foo[X](x: X) = x
+foo: [X](x: X): X
+
+scala> foo[Int](3)
+<console>:9: warning: The method foo would benefit from miniboxing type
+parameter X, since it is instantiated by a primitive type.
+              foo[Int](3)
+                 ^
+res0: Int = 3
+
+scala> def bar[@miniboxed X](x: X) = foo[X](x)
+<console>:8: warning: The method foo would benefit from miniboxing type
+parameter X, since it is instantiated by miniboxed type parameter X of method bar.
+       def bar[@miniboxed X](x: X) = foo[X](x)
+                               ^
+bar: [X](x: X)X
+\end{lstlisting-nobreak}
+In the first example, method |foo| is invoked with primitive type parameter |Int|. Boxing can be avoided in this case, but the type parameter |X| in |foo|'s definition has not been annotated for miniboxing. Therefore, this code is sub-optimal and user will be alerted to this fact. In the second example, |foo| is invoked with miniboxed type parameter, but since the parameter |X| in |foo|'s definition was not annotated for miniboxing, the boxed type will be used. In both cases, as the warnings suggest, the solution is to minibox the type parameter |X| of method |foo| as follows:
+
+\begin{lstlisting-nobreak}
+scala> def foo[@miniboxed X](x: X) = x
+foo: [X](x: X)X
+
+scala> foo[Int](3)
+res1: Int = 3
+
+scala> def bar[@miniboxed X](x: X) = foo[X](x)
+bar: [X](x: X)X
+\end{lstlisting-nobreak}
+Forward warnings, on the other hand, check that properly miniboxed type parameters at the definition site are optimized correctly at the use site as well. The following example illustrates this behavior:
+
+\begin{lstlisting-nobreak}
+scala> def foo[@miniboxed X](x: X) = x
+foo: [X](x: X)X
+
+scala> def bar[X](x: X) = foo[X](x)
+<console>:8: warning: The following code could benefit from miniboxing specialization if the type parameter X of method bar would be marked as "@miniboxed X" (it would be used to instantiate miniboxed type parameter X of method foo)
+       def bar[X](x: X) = foo[X](x)
+                             ^
+bar: [X](x: X)X
+\end{lstlisting-nobreak}
+In the above example, type parameter |X| of method |foo| is miniboxed. Anyways, type parameter |X| of method |bar| is not annotated as miniboxed and invoking the method |foo| would not benefit from miniboxing if |X| is some of the primitive types. Warning will suggest to user to annotate type parameter |X| in the definition of method |bar| and this way benefit from miniboxing:
+
+\begin{lstlisting-nobreak}
+scala> def foo[@miniboxed X](x: X) = x
+foo: [X](x: X)X
+
+scala> def bar[@miniboxed X](x: X) = foo[X](x)
+bar: [X](x: X)X
+\end{lstlisting-nobreak}
+
+\paragraph{}
+Besides the warnings shown in above examples, there is also a warning which shows when the type arguments do not allow an unambiguous choice between primitives and references. This can happen when the type parameter of a method is miniboxed but method is invoked with type argument |Any|. Since |Any| can refer to either a reference type or a primitive type, it is not specific enough to benefit from miniboxing, despite the original definition being miniboxed. As mentioned above, miniboxing specialization can have its limitations and the following example shows a warning explaining that the code is sub-optimal due to technical limitations and provides a suitable workaround:
+
+\begin{lstlisting-nobreak}
+scala> class W[@miniboxed Z](z: Z) { println(z) }
+
+<console>:7: warning: The following constructor statement will not be
+specialized in the miniboxed trait W. This is a technical limitation
+that can be worked around: (please see
+https://github.com/miniboxing/miniboxing-plugin/issues/64)
+       class W[@miniboxed Z](z: Z) { println(z) }
+                                            ^
+<console>:7: error: The following code is accessing field z of miniboxed
+class/trait W, a pattern which becomes invalid after the miniboxing
+transformation. Please allow Scala to generate accessors by using val/var
+or removing the "private[this]" qualifier: val z: Z".
+       class W[@miniboxed Z](z: Z) { println(z) }
+                                             ^
+defined class W
+\end{lstlisting-nobreak}
+Finally, in some cases specialization is lost because a class or method in the library was not miniboxed. One example is using collections with primitive types:
+
+\begin{lstlisting-nobreak}
+scala> 3 :: Nil
+<console>:8: warning: The method scala.collection.immutable.List.::
+would benefit from miniboxing type parameter B, since it is 
+instantiated by a primitive type.
+              3 :: Nil
+                ^
+res0: List[Int] = List(3)
+\end{lstlisting-nobreak}
+
+\paragraph{}
+%@generic annotation and suppressing warnings
+% Programmer may be aware of his suboptimal code and warnings are not needed in that case
+% Turning off all the warnings is too coarse-grained
+% Possibility to suppress warnings from both the definition-site or the use-site site by adding @generic annotation for type param
+% Example + explanation
+In certain situations, it is possible for the user to be aware of their sub-optimal code and not want to modify it; in these situations, they should be able to suppress the warnings. However, only allowing the user to suppress all warnings is too coarse, and finer-grained control over which warnings are suppressed should be provided to the user. The Miniboxing plugin offers this by allowing user to add a |@generic| annotation for type parameters. By adding this annotation, all warnings related to that specific type parameter on both definition-site and the use-site would be suppressed. The following example illustrates how this feature can be used: 
+
+\begin{lstlisting-nobreak}
+scala> def foo[@miniboxed T](t: T) = t
+defined method foo
+\end{lstlisting-nobreak}
+Without |@generic| annotation: 
+
+\begin{lstlisting-nobreak}
+scala> foo[Any](3)
+<console>:9: warning: Using the type argument "Any" for the miniboxed type parameter T of method foo is not specific enough, as it could mean either a primitive or a reference type. Although method foo is miniboxed, it won't benefit from specialization:
+              foo[Any](3)
+                 ^
+res0: Any = 3
+\end{lstlisting-nobreak}
+With |@generic| annotation: 
+
+\begin{lstlisting-nobreak}
+scala> foo[Any @generic](3) = 3
+res1: Any = 3
+\end{lstlisting-nobreak}
+
+\subsection{Exposing internal state - MbReflection}
+\paragraph{}
+%exposing internal state??????? skk je ovo
+\paragraph{}
+%how code was transformed?? skk je pa ovo
+
