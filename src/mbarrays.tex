@@ -103,7 +103,7 @@ But this requires |baz| to have a |ClassTag| passed in:
  def baz[T: `ClassTag`] = `new Array[T](10)`
 \end{lstlisting-nobreak}
 
-Therefore, to call method |bar|, the caller needs to pass in a |ClassTag| object. When the call is made from non-generic code (e.g. |bar[Int]|), the |ClassTag| is synthesize right away from the type argument. This is the cost of synthesis. But there is another cost, of propagation: the |bar| method is also a caller of |baz|, but it's generic. Since its type parameter |T| is erased, the compiler can't synthesize a |ClassTag| object. Instead, it must require its callers to provide it:
+Therefore, to call method |bar|, the caller needs to pass in a |ClassTag| object. When the call is made from non-generic code (e.g. |bar[Int]|), the |ClassTag| is synthesized right away from the type argument. This is the cost of synthesis. But there is another cost, of propagation: the |bar| method is also a caller of |baz|, but it's generic. Since its type parameter |T| is erased, the compiler can't synthesize a |ClassTag| object. Instead, it must require its callers to provide it:
 
 \begin{lstlisting-nobreak}
  def bar[T: `ClassTag`] = baz[T]
@@ -117,7 +117,7 @@ Similarly, |foo| must require the |ClassTag| object to be passed from its caller
  def baz[T: `ClassTag`] = `new Array[T](10)`
 \end{lstlisting-nobreak}
 
-This shows that generic code must be transitively modified to propagate |ClassTag| objects in order to allow instantiating an arrays, explaining the cost of propagation. Finally, when dealing with objects, |ClassTag| objects have to be stored as fields in the object itself, adding to the program's memory footprint, explaining the storage cost.
+This shows that generic code must be transitively modified to propagate |ClassTag| objects in order to allow instantiating arrays, explaining the cost of propagation. Finally, when dealing with objects, |ClassTag| objects have to be stored as fields in the object itself, adding to the program's memory footprint, explaining the storage cost.
 
 % Option 2 : Always allocate Object[] (Array[AnyRef]) and use .asInstanceOf[Array[T]] on the object array to make the user believe.
 % Problem 3 : This breaks the invariant Array[X] => x[] when X is a primitive. (show example of code that makes the JVM crash)
@@ -141,7 +141,7 @@ Therefore, the approach can only be used in scenarios where it is guaranteed to 
 
 \subsubsection{Specialized arrays.}
 
-Scala offers another feature, specialization, which can help enhancing performances of generic code under certain circumstances. When specializing the type parameter of a function, different variant of this function are generated, each of them being optimized for a specific instance of the type parameter. Hence, generic array accesses that occur in the specialized declinations of a function can benefit from such optimizations. For example, we can specialize the type parameter of our function |first| for |Int|: 
+Scala offers another feature, specialization, which can help enhancing performances of generic code under certain circumstances. When specializing the type parameter of a function, different variant of this function are generated, each of them being optimized for a specific instance of the type parameter. Hence, generic array accesses that occur in the specialized declinations of a function can benefit from optimizations. For example, we can specialize the type parameter of our function |first| for |Int|: 
 
 % If the code is specialized, array access is automatically optimized:
 %   def first[@specialized T](a: Array[T]): T = a(0)
@@ -171,7 +171,7 @@ This will yield two variants of |first|, the default -- slow and unoptimized -- 
 %  * but Array[Int] can only mean int[], not Object[]
 % therefore ClassTags are still needed.
 
-Thanks to the invariant, we know that the JVM type behind |Array[Int]| is |int[]|. Therefore, the bytecode generated for |first_int| will consist of optimized instructions that are specific to |int[]| instead of the long match. Having these two versions of |first|, the compiler will be able to choose which of them to call according to which type |T| is instanciated with. Subsequently, the default version of |first| will be picked whenever |T| is instantiated with anything but |Int|, and |first_int| will be picked whenever |T| is instantiated with |Int|. However it is worth noting that the optimized version will not be chosen if the call is made from a generic context without specialization. The reason is that type erasure would occur, thus making it impossible to reason about the instance of the type parameter in that context. For the exact same reason, specialization -- although it can help improving performances of array accesses -- does not provide any solution to the generic array instantiation problem:
+Thanks to the array invariant, we know that the JVM type behind |Array[Int]| is |int[]|. Therefore, the bytecode generated for |first_int| will consist of optimized instructions that are specific to |int[]| instead of the long match. Having these two versions of |first|, the compiler will be able to choose which of them to call according to which type |T| is instanciated with. Subsequently, the default version of |first| will be picked whenever |T| is instantiated with anything but |Int|, and |first_int| will be picked whenever |T| is instantiated with |Int|. However it is worth noting that the optimized version will not be chosen if the call is made from a generic context without specialization. The reason is that type erasure would occur, thus making it impossible to reason about the instance of the type parameter in that context. For the exact same reason, specialization -- although it can help improving performances of array accesses -- does not provide any solution to the generic array instantiation problem:
 
 Suppose the following code.
 
@@ -181,7 +181,7 @@ Suppose the following code.
  def foo[T] = newArray[T]
 \end{lstlisting-nobreak}
 
-Inside |foo|, |T| is erased. Consequently, the compiler will have no choice but the choose the default variant of |newArray|, thus bringing it back to the original problem. |ClassTag|s are therefore still needed in order to instantiate arrays in a generic context. Furthermore, specialization of code is extremely expensive since it will produce additionnal bytecode in an exponential function of the number of type parameters that are specialized, thus making it close to impossible to ensure that all the generic code becomes specialized.
+Inside |foo|, |T| is erased. Consequently, the compiler will have no choice but the call the default erased variant of |newArray|. But since its type parameter is erased, it will not be able to instantiate the right array, thus bringing it back to the original problem. The code above does not compile, and |ClassTag|s are therefore still needed in order to instantiate arrays in a generic context. Furthermore, specialization of code is extremely expensive since it will produce additionnal bytecode in an exponential function of the number of type parameters that are specialized, thus making it close to impossible to ensure that all the generic code becomes specialized.
 
 % Wrap up: what we've seen
 %  - ClassTag approach       => advantage:    solves array instantiation problem
