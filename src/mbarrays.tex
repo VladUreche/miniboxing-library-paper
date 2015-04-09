@@ -213,8 +213,6 @@ Would it be possible to combine the three approaches seen so far to get somethin
 %                               disadvantage: array must not escape
 %    solution: enclose the class into our own MbArray object, which can escape
 
-|MbArray| is a generic class that wraps a Scala |Array| and controls it entirely, thus guaranteeing the underlying array does not escape. Thanks to its type parameter being miniboxed, the different declinations of |MbArray| can make use of what they know about their type parameter in order to instantiate the most appropriate array for each instance. That is, the declination dealing with integral types will instantiate an |Array[Long]| internally when the class is itself instantiated, while the declination dealing with floating point types will instantiate an |Array[Double]| and the default one will instantiate an |Array[AnyRef]|. One can note that the invariant is indeed broken inside the class, but |MbArray| guarantees that the internal array will never escape, as mentionned above.
-
 %  - ClassTag approach       => advantage:    solves array instantiation problem
 %                               disadvantage: has to carry ClassTag objects
 %    solution: we can use the miniboxed information to specialize the internal array
@@ -225,4 +223,31 @@ Would it be possible to combine the three approaches seen so far to get somethin
 %                               disadvantage: opportunistic nature => does not solve the instantiation problem
 %    solution: optimistically assume the MbArray object contains the specialized array. If so => fast path, if not => slow path
 
+
+|MbArray| is a generic class that wraps a Scala |Array| and controls it entirely, thus guaranteeing the underlying array does not escape. Thanks to its type parameter being miniboxed, the different declinations of |MbArray| can make use of what they know about their type parameter in order to instantiate the most appropriate array for each instance. That is, the declination dealing with integral types will instantiate an |Array[Long]| internally when the class is itself instantiated, while the declination dealing with floating point types will instantiate an |Array[Double]| and the default one will instantiate an |Array[AnyRef]|. One can note that while the invariant is undeniably broken inside the class (|MbArray[Int]| will use an |Array[Long]| internally and not an |Array[Int]|), |MbArray| guarantees -- as mentionned above -- that the internal array will never escape, thus eliminating the problem. 
+
+%On top of that, accessing |MbArray|s in a miniboxed context will opptimistically assume that the |MbArray| contains the specialized underlying array, instantiated with %an integral type parameter will use the 
+The attentive reader may notice that, analogously to specialization, |MbArrays| won't benefit from the specialized variants of the class if the |MbArray| is instanciated from a generic context that is not miniboxed. However, a warning will be issued when this is the case, informing the developper that his code is suboptimal and could be easily optimized. As a consequence, the compiler will assume that the developper followed the advice and will therefore optimistically transform any apply calls on |MbArray|s the way it is shown in the following example:
+
+\begin{lstlisting-nobreak}
+ def first(a: MbArray[Int]): Int = a(0)
+\end{lstlisting-nobreak}
+
+which will be transformed to:
+
+\begin{lstlisting-nobreak}
+ def first(a: MbArray): Int = 
+   a match {
+     case x: MbArray_J => x.apply_J(0) // fast path
+     case x: MbArray_L => x.apply_L(0) // slow path
+   }
+\end{lstlisting-nobreak}
+
+Going through the fast path will come down -- at the JVM level -- to accessing an |Array[Long]| and converting its value to |Int|, which both are executed through optimized instructions. On the other hand, the slow path will require accessing an |Array[AnyRef]| containing the boxed version of the |Int| value, making it non optimal path.
+
+In other words, |MbArray| is a generic array container that can be instantiated in a generic context, and so without the need of using any |ClassTag|s. Furthermore, there are no performance tradeoffs involved when accessing the elements of the array in a miniboxed context or when the type instance is known. 
+
 % Coupled whith performance advisiories, we can direct the programmer away from the slow path => only going on the fast path :)
+
+To conclude, the opportunistic nature of the |MbArray| coupled with performance advisories will guarantee the developper optimal runtime performances. 
+
