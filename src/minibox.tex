@@ -1,0 +1,43 @@
+\section{The Miniboxing Transformation}
+\label{sec:minibox}
+
+% Summary
+
+\subsection{Generics in Scala}
+
+% Generics => Different data types & sizes => Erasure => Example
+
+% Naive approach => specialization => Example
+
+% Used in Scala => limited by Duplication
+
+
+\subsection{Miniboxing}
+
+% Miniboxing encoding => Example
+
+% Ellipsis => Type tags + send to the papers
+
+\subsection{Fast Path vs Slow Path}
+
+% Example
+
+\begin{lstlisting-nobreak}
+ def foo[`@miniboxed` T](t: T) = bar(t)
+ def bar[T](t: T) = baz(t)
+ def baz[`@miniboxed` T](t: T) = t
+\end{lstlisting-nobreak}
+
+% Limitations + explaining the slowdowns involved
+
+% Fast path vs slow path
+
+\subsection{Object Specialization}
+
+% Object encoding => Example
+
+% Used in the Scala compiler for Functions, Tuples, etc
+
+% Communicating between miniboxing and specialization => boxing => example: Tuple
+
+
