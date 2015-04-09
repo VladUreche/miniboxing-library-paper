@@ -4,49 +4,32 @@
 % Most optimizations => compromises => heuristics => opaque to programmers => hinders productivity
 
 % Productiviy => high-level abstractions => redundant operations
-Productivity in modern software development is achieved using high-level languages that allow programmers to focus on the requirements in the problem domain. The high-level programs are then transformed by compilers into low-level implementations that, when executed, produce the desired result. However, this translation is usually conservative and defensive: in checked languages, for example, accessing an array twice using the same index produces two array bounds checks, even though the second one is redundant.
+Productivity in modern software development is achieved using high-level languages that allow programmers to focus on the requirements and the problem domain. The high-level programs are then compiled to low-level implementations that, when executed, produce the desired result. However, the translation is often too defensive, producing suboptimal code: in checked languages, for example, accessing an array twice using the same index produces two array bounds checks, even though the second one is clearly redundant, being subsumed by the first check.
 
 % Productivity => optimizations (to close performance gap)
-With programming languages targeting higher and higher abstraction levels, program optimizations are becoming crucial component to enabling productivity. Since high-level program translations routinely contain redundant operations, optimizations are used to reduce the performance gap between abstractions and their low-level, hand-coded equivalent implementations.
+With programming languages targeting higher and higher abstraction levels, program optimizations are becoming an essential component of compilers. Due to the nature of translating high-level abstractions, the low level code contains redundant operations, which slow down execution. To improve this, optimization passes eliminate or shortcut redundant operations, bridging the performance gap between high-level abstractions and their low-level, tediously hand-coded equivalents.
 
 % Program optimizations are compromises.
-While some optimizations can be guaranteed to produce better results (e.g. eliminating redundant bounds checks), others tend to be compromises. For example, many opportunistic transformations, such as shape analysis, split the program into two paths: a fast path, where the opportunistic shape assumptions are satisfied and the program is optimized and a slow path, which has to execute slower and more general operations. This makes opportunistic transformations a compromise: they can either speed up a section of the program by optimizing it or slow it down, by performing additional checks and triggering additional transformations.
+While some optimizations can be guaranteed to produce better results (e.g. eliminating redundant bounds checks), others tend to be compromises. For example, many opportunistic transformations, such as specialization, split the program into two paths: a fast path, where some opportunistic assumptions about the data hold so the program can run faster, and a slow path, which has to execute slower and more general operations. This makes opportunistic transformations a compromise: they can either speed up a section of the program or slow it down, since taking the slow path usually requires additional data transformations.
 
 % Ultimately, heuristics hinder productivity.
-While opportunistic optimizations are a great tool to have in a compiler's toolbox, they are very difficult for the programmers to reason about: these transformations use opaque heuristics and can easily be invalidated by either new code additions or running the code for different types of data. Therefore, programmers treat these optimizations as black boxes and rely on benchmarks to reverse-engineer when and how the code is optimized. Ultimately, this affects productivity.
+While opportunistic optimizations are a great tool to have in a compiler's toolbox, they are very difficult for the programmers to reason about: these transformations use opaque heuristics and can easily be invalidated by adding new code or by introducing a new type of data. Therefore, programmers treat these optimizations as black boxes and rely on benchmarks to reverse-engineer when and how the code is optimized. Ultimately, this undoes the benefits of high-level programming, by wasting the time saved using high-level abstractions on benchmarks and guessing how transformations worked.
 
 % Show how an opaque transformation => transparent
-In this context, our paper explains how we offer programmers a window into the opportunistic   offering them compile-time warnings that explain what code prevents the optimization and how to  their code and how called miniboxing \cite{miniboxing}, which transforms generic classes and methods to allow them to handle unboxed primitive types.
+The first part of our paper explains how we offer programmers a window into the inner workings of an opportunistic transformation, namely the miniboxing specialization scheme for generics. Miniboxing offers performance advisories, in the form of compile-time warnings explaining where suboptimal code occurred and how to prevent it. A highlight of our approach is its ability to teach the programmers what they need to do to maximize performance: only based on the advisories, we were able to speed up a program by 4x, without the programmer even knowing what how the miniboxing transformation works.
 
-% Sections
-\topic{In the first part, we explain ...}
+% Another example of slow/fast path => interoperating with foreign objects/APIs (ex: JNI)
+Another example of a slow and fast path separation occurs when inter-operating with foreign objects or external code, which do not have the same data representation and guarantees as the optimized code. For example, when invoking JNI (Java Native Interface) calls in a class, many of the standard Java Virtual Machine (JVM) optimizations are inhibited, since they may interfere with the external code or leave the data in an inconsistent state.
 
-\topic{In the second part, we explain ...}
+% Miniboxing => API
+In the case of the miniboxing transformation, which transforms the way data is represented, inter-operating with foreign objects forces a slow path, as values need to be converted to the foreign object's desired representation, incurring significant performance losses. Unfortunately, inter-operating with foreign objects cannot be banned, even more when the foreign objects are objects from the language's standard library, which is compiled with an incompatible encoding for the data.
 
-\topic{In the third part, we explain ...}
+The second part of the paper focuses on allowing objects that use incompatible data representations to inter-operate efficiently. In our case, code transformed by miniboxing should be able to inter-operate efficiently with code in the standard library, which uses a different data representation. We look at three objects in the Scala programming language: functions, tuples and arrays, each with its own specific usage pattern that drives a different approach to inter-operating with it. We exhaustively explore the solution space and show the advantages and limitations of each solution, allowing readers who need to deal with different data representations to quickly pick up their desired approach.
 
-\topic{Contributions.}
-% Contributions
-%  - describe the mechanisms we used to offer transparency
-%  - explain how we dealt with existing suboptimal API
-%  - benchmark our changes and show how, combined, the sum of the parts is greater than each individual part.
+The paper makes two contributions centered on avoiding slow paths:
+\begin{compactitem}
+  \item by instructing the programmer on where code will take the slow path and how this can be avoided;
+  \item by offering fast-path communication between objects with otherwise different data representations.
+\end{compactitem}
 
-% Conclusion
-\topic{Conclusion.}
-
-
-
-% Improving The Programmer Experience
-%  - Performance Advisories
-%  - Exposing internal state - MbReflection
-% Bridging Existing Abstractions to Optimized Implementations
-%  - Function => MbFunction
-%  - Tuple    => accessors + constructors
-% Exposing New Optimized Abstractions
-%  - MbArray
-% Benchmarks
-%  - Performance Advisories => 5x improvement
-%  - MbFunction
-%  - MbArray => MbArray + MbFunction
-%  - MbTuple => need benchmark
-% Related Work
+We benchmark our approaches and show as many as 5 very different scenarios where we obtained speedups between 1.5 and 10x by avoiding slow paths in the miniboxing transformation.

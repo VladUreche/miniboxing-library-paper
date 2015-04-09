@@ -4,10 +4,33 @@
 
 \begin{document}
 
+% Miniboxing Transformation
+%  - Motivation
+%  - Specialization
+%  - Miniboxing
+%  - Miniboxing for objects
+%  - Interoperating with Generic     => Slow path
+%  - Interoperating with Specialized => Slow path
+% Improving The Programmer Experience
+%  - Performance Advisories
+%  - Exposing internal state - MbReflection
+% Bridging Existing Abstractions to Optimized Implementations
+%  - Function => MbFunction
+%  - Tuple    => accessors + constructors
+% Exposing New Optimized Abstractions
+%  - MbArray
+% Benchmarks
+%  - Performance Advisories => 5x improvement
+%  - MbFunction
+%  - MbArray => MbArray + MbFunction
+%  - MbTuple => need benchmark
+% Related Work
+
 \input{title.tex}
 \input{abstract.tex}
-\input{info.tex}
+% \input{info.tex}
 \input{intro.tex}
+\input{warnings_and_mbreflection.tex}
 \input{mbarrays.tex}
 
 \end{document}
