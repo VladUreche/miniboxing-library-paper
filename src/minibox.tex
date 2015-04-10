@@ -1,0 +1,89 @@
+\section{The Miniboxing Transformation}
+\label{sec:minibox}
+
+% Summary
+This section describes the miniboxing transformation, showing why it is necessary, how it improves performance and how the slow paths/fast paths occur in practice.
+
+\subsection{Generics in Scala}
+
+% Generics => Different data types & sizes => Erasure => Example
+Generics are crucial to productivity. They allow programmers to design algorithms and data structures that operate identically regardless of the data used, enabling code reuse. For example, it's very useful to define a |Vector[T]| and be able instantiate it for any type. However, on the low level, data comes in different shapes and sizes: from 1-bit booleans to 64-bit long integers, floating point numbers, characters, value classes \cite{gosling-value-classes,rose-value-classes-tearing,sip-value-classes} and objects. In a |Vector[Int]|, getters and setters receive integer values of 32-bits while in |Vector[Double]| they receive 64-bit double-precision floating-point numbers.
+
+The current compilation scheme for generics is called erasure, and is the simplest compilation scheme possible for generics. Erasure requires all data, regardless of its type, to be passed in by reference, pointing to a heap object. Let us take a simple example, a generic |identity| method written in Scala:
+
+\begin{lstlisting-nobreak}
+ def identity[T](t: T): T = t
+ val five = identity(5)
+\end{lstlisting-nobreak}
+
+When compiled, the source code corresponding to the low-level bytecode for the method is:
+
+\begin{lstlisting-nobreak}
+ def identity(t: `Object`) = `Object`
+\end{lstlisting-nobreak}
+
+As the name suggests, the type parameter |T| was ``erased'' from the method, leaving it to accept and return |Object|s. The problem with this approach is that values of primitive types, such as integers, need to be transformed into heap objects, which are compatible with |Object|, when passed to generic code, in a process called boxing. The process goes two-ways: the return of generic methods needs to be unboxed back to a primitive type:
+
+\begin{lstlisting-nobreak}
+ val five = identity(`Integer.valueOf(5)`).`intValue()`
+\end{lstlisting-nobreak}
+
+% Naive approach => specialization => Example
+Boxing primitive types requires heap allocation and garbage collection, both of which slow down program performance. Furthermore, when values are stored in generic classes, such as |Vector[T]|, they need to be stored in the boxed format, thus inflating the heap memory requirements and slowing down execution. In practice, generic methods can be as much as 10 times slower than their monomorphic (primitive) instantiations. This gave rise to a simple and effective idea: specialization.
+
+Specialization is a second approach used by the Scala compiler to translate generics. It is triggered by the |@specialzied| annotation added to a type parameter:
+
+\begin{lstlisting-nobreak}
+ def identity[`@specialized` T](t: T): T = t
+ val five = identity(5)
+\end{lstlisting-nobreak}
+
+Based on the annotation, the specialization transformation creates several versions of the |identity| method:
+
+\begin{lstlisting-nobreak}
+ def identity(t: Object): Object = t
+ def identity`_I`(t: int): int = t
+ def identity`_C`(t: char): char = t
+ // ... and another 7 versions of the method
+\end{lstlisting-nobreak}
+
+Having multiple methods, also called specialized variants or simply specializations of the |identity| method, the compiler can optimize the call to |identity|:
+
+\begin{lstlisting-nobreak}
+ val five: int = identity`_I`(5)
+\end{lstlisting-nobreak}
+
+This transformation side-steps the need for a heap object allocation, improving the program performance and lowering its heap requirements.
+
+% Used in Scala => limited by Duplication
+However, specialization is not without limitations. As we have seen, it creates 10 versions of the method for each type parameter. But what if a method has 2 type parameters? It create 100 versions, and in general, for $N$ specialized type parameters, it creates $10^N$ specialized variants, the cartesian product covering all combinations. This prevents the Scala library from using specialization extensively, since common classes have between one and three type parameters. This led to the next development, the miniboxing transformation.
+
+\subsection{Miniboxing}
+
+% Miniboxing encoding => Example
+
+% Ellipsis => Type tags + send to the papers
+
+\subsection{Fast Path vs Slow Path}
+
+% Example
+
+\begin{lstlisting-nobreak}
+ def foo[`@miniboxed` T](t: T) = bar(t)
+ def bar[T](t: T) = baz(t)
+ def baz[`@miniboxed` T](t: T) = t
+\end{lstlisting-nobreak}
+
+% Limitations + explaining the slowdowns involved
+
+% Fast path vs slow path
+
+\subsection{Object Specialization}
+
+% Object encoding => Example
+
+% Used in the Scala compiler for Functions, Tuples, etc
+
+% Communicating between miniboxing and specialization => boxing => example: Tuple
+
+
