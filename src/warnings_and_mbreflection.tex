@@ -65,7 +65,7 @@ scala> def bar[X](x: X) = foo[X](x)
                              ^
 bar: [X](x: X)X
 \end{lstlisting-nobreak}
-In the above example, type parameter |X| of method |foo| is miniboxed. Anyways, type parameter |X| of method |bar| is not annotated as miniboxed and invoking the method |foo| would not benefit from miniboxing if |X| is some of the primitive types. Warning will suggest to user to annotate type parameter |X| in the definition of method |bar| and this way benefit from miniboxing:
+In the above example, type parameter |X| of method |foo| is miniboxed. \romain{`However` instead of `Anyways`?} Anyways, type parameter |X| of method |bar| is not annotated as miniboxed \romain{I would have added an implication, like `and therefore`} and invoking the method |foo| would not benefit from miniboxing if |X| is \romain{isn't it `one of ` instead of `some of` ?} some of the primitive types. \romain{I think this sounds better `A warning will inform the user that annotating type parameter X in the definition of Bar could make it benefit from miniboxing`} Warning will suggest to user to annotate type parameter |X| in the definition of method |bar| and this way benefit from miniboxing:
 
 \begin{lstlisting-nobreak}
 scala> def foo[@miniboxed X](x: X) = x
@@ -75,7 +75,10 @@ scala> def bar[@miniboxed X](x: X) = foo[X](x)
 bar: [X](x: X)X
 \end{lstlisting-nobreak}
 \paragraph{}
-Besides the warnings shown in above examples, there is also a warning which shows when the type arguments do not allow an unambiguous choice between primitives and references. This can happen when the type parameter of a method is miniboxed but method is invoked with type argument |Any|. Since |Any| can refer to either a reference type or a primitive type, it is not specific enough to benefit from miniboxing, despite the original definition being miniboxed. As mentioned above, miniboxing specialization can have its limitations and the following example shows a warning explaining that the code is sub-optimal due to technical limitations and provides a suitable workaround:
+
+%\romain{I didn't understand the following paragraph. You say that the warning can show up `when the type parameter of a method is miniboxed but method is invoked with type argument |Any|`, but in your code example the problem seem to be that the miniboxing plugin has problems specializing constructors. Are the two related ? }
+\romain{The double negation (`does not allow an unambiguous`) made it hard to understand for me. What about `Besides the warnings shown in the above examples, there is also a warning which can show up when the instantiated type argument could refer to either a primitive type or a reference type`}
+Besides the warnings shown in above examples, there is also a warning which shows when the type arguments do not allow an unambiguous choice between primitives and references. This can happen when the type parameter of a method is miniboxed but method is invoked with type argument |Any|. Since |Any| can refer to either a reference type or a primitive type, it is not specific enough to benefit from miniboxing, despite the original definition being miniboxed. \romain{Shouldn't what follows be in another paragraph ? (At first, I thought the code example below was refering to the problem of ambiguous type arguments, which made no sense.)} As mentioned above, miniboxing specialization can have its limitations and the following example shows a warning explaining that the code is sub-optimal due to technical limitations and provides a suitable workaround:
 
 \begin{lstlisting-nobreak}
 scala> class W[@miniboxed Z](z: Z) { println(z) }
