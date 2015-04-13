@@ -1,5 +1,5 @@
-
 \section{Improving The Programmer Experience}
+\label{sec:advisories}
 \paragraph{}
 In this section, we will discuss how to improve programmer experience by giving them compile-time performance advisories and exposing internal state at run-time. First, we will present the need for performance advisories and introduce the different types of advisories that exist today. A discussion about the motivation for introducing the MbReflection API will follow, along with examples to demonstrate its functionality.
 \subsection{Performance Advisories}
@@ -102,7 +102,7 @@ Finally, in some cases specialization is lost because a class or method in the l
 \begin{lstlisting-nobreak}
 scala> 3 :: Nil
 <console>:8: warning: The method scala.collection.immutable.List.::
-would benefit from miniboxing type parameter B, since it is 
+would benefit from miniboxing type parameter B, since it is
 instantiated by a primitive type.
               3 :: Nil
                 ^
@@ -115,13 +115,13 @@ res0: List[Int] = List(3)
 % Turning off all the warnings is too coarse-grained
 % Possibility to suppress warnings from both the definition-site or the use-site site by adding @generic annotation for type param
 % Example + explanation
-In certain situations, it is possible for the user to be aware of their sub-optimal code and not want to modify it; in these situations, they should be able to suppress the warnings. However, only allowing the user to suppress all warnings is too coarse, and finer-grained control over which warnings are suppressed should be provided to the user. The Miniboxing plugin offers this by allowing user to add a |@generic| annotation for type parameters. By adding this annotation, all warnings related to that specific type parameter on both definition-site and the use-site would be suppressed. The following example illustrates how this feature can be used: 
+In certain situations, it is possible for the user to be aware of their sub-optimal code and not want to modify it; in these situations, they should be able to suppress the warnings. However, only allowing the user to suppress all warnings is too coarse, and finer-grained control over which warnings are suppressed should be provided to the user. The Miniboxing plugin offers this by allowing user to add a |@generic| annotation for type parameters. By adding this annotation, all warnings related to that specific type parameter on both definition-site and the use-site would be suppressed. The following example illustrates how this feature can be used:
 
 \begin{lstlisting-nobreak}
 scala> def foo[@miniboxed T](t: T) = t
 defined method foo
 \end{lstlisting-nobreak}
-Without |@generic| annotation: 
+Without |@generic| annotation:
 
 \begin{lstlisting-nobreak}
 scala> foo[Any](3)
@@ -130,7 +130,7 @@ scala> foo[Any](3)
                  ^
 res0: Any = 3
 \end{lstlisting-nobreak}
-With |@generic| annotation: 
+With |@generic| annotation:
 
 \begin{lstlisting-nobreak}
 scala> foo[Any @generic](3) = 3
@@ -203,7 +203,7 @@ scala> class D[@miniboxed T] {
     |   assert(isMiniboxed[T], "Type parameter T of class D is not miniboxed!")
     | }
     define class D
- 
+
 scala> new D[String]
     java.lang.AssertionError: assertion failed: Type parameter T of class D is not miniboxed!
     at scala.Predef$.assert(Predef.scala:165)
@@ -221,7 +221,7 @@ scala> def foo[@miniboxed T]: Unit = {
     |     println("foo[reference]")
     | }
 	foo: [T]=> Unit
- 
+
 scala> foo[Byte]
 	foo[miniboxed]
 \end{lstlisting-nobreak}

@@ -61,29 +61,124 @@ However, specialization is not without limitations. As we have seen, it creates 
 \subsection{Miniboxing}
 
 % Miniboxing encoding => Example
+Taking a low level perspective, we can observe the fact that all primitive types in the Scala programming language fit in 64 bits. This is the main idea that motivated the miniboxing transformation: instead of creating separate versions of the code for each primitive type alone, we can create a single one, which encodes any of the primitive type in a 64-bit long integer, much like a tagged union \cite{tagged-unions-lua}. But unlike a tagged union, miniboxing can use the statically typed nature of the language to avoid carrying tags with each value. Looking at the previous example:
+
+\begin{lstlisting-nobreak}
+ def identity[`@miniboxed` T](t: T): T = t
+ val five = identity(5)
+\end{lstlisting-nobreak}
+
+Since the type parameter is annotated with |@miniboxed|, the compiler\footnote{In the rest of the paper we assume the miniboxing Scala complier plugin is active unless otherwise noted. For more information on adding the miniboxing plugin to the build please see \url{http://scala-miniboxing.org}.} translates the code to:
+
+\begin{lstlisting-nobreak}
+ def identity(t: Object): Object = t
+ def identity`_M`(..., t: long): long = t
+ val five: int= `minibox2int`(identity`_M`(`int2minibox`(5)))
+\end{lstlisting-nobreak}
+
+% Cost of miniboxing
+Alert readers will notice the |minibox2int| and |int2minibox| transformations act exactly like the boxing coercions in the erased generic case. This is true, the values are being coerced to the miniboxed representation, much like in the case of erasure, but on the Java Virtual Machine platform our benchmarks have shown that the miniboxing conversion cost is completely eliminated when compiling the code to native x86 assembly. Further benchmarking has shown that the code matches the performance of specialized code within a 10\% slowdown due to coercions \cite{miniboxing}.
 
 % Ellipsis => Type tags + send to the papers
+There is an elipsis in the definition of the |identity_M| method, which stands for what we call a type byte: a byte describing the type encoded in the long integer, allowing the operations such as |toString|, |hashCode| or |equals| to be executed correctly on encoded values, treating them as the original primitive (corresponding to |T|) rather than long integers. Although the transformation looks simple, there are many subtleties we have to take into account when transforming the code \cite{miniboxing,miniboxing-linkedlist,ldl}.
+
+\subsection{Class Transformation}
+
+% Object encoding => Example
+One of the most subtle aspects of the miniboxing transformation is how it transforms classes: it has to preserve the inheritance relation while providing specialized variants of the class, where fields are encoded as miniboxed long integers instead of |Object|s. To show the example, let us take a simple linked list node class:
+
+\begin{lstlisting-nobreak}
+ class Node[`@miniboxed` T](val head:T, val tail:Node[T])
+\end{lstlisting-nobreak}
+
+The desugared code for class |Node| is:
+
+\begin{lstlisting-nobreak}
+ class Node[`@miniboxed` T](head: T, tail: Node[T]) {
+   def head: T
+   def tail: Node[T]
+ }
+\end{lstlisting-nobreak}
+
+% Method and accessor variants
+There are three subtleties in the |Node| translation:
+\begin{compactitem}
+  \item First, there should be two versions of the class, one where the |head| field is a long integer and another one where it is an |Object|;
+  \item Then, types like |Node[_]| can be instantiated by both classes, so they need to have an interface in common;
+  \item Finally, the interface has to contain the specialized methods of both classes, so both classes should implement all the methods.
+\end{compactitem}
+
+When miniboxing is active, the |Node| class is transformed into an interface:
+
+\begin{lstlisting-nobreak}
+ interface Node {
+   def head: Object
+   def head_J(...): long
+   def tail: Node[T]
+ }
+\end{lstlisting-nobreak}
+
+With two implementations:
+
+\begin{lstlisting-nobreak}
+ class Node_L(head: `Object`, tail: Node_L) impl Node {
+   def head: Object = this.head
+   def head_J(...): long = `box2minibox`(...)
+   def tail: Node[T] = this.tail
+ }
+
+ class Node_J(..., head: `long`, tail: Node_L) impl Node{
+   def head: Object = `minibox2box`(head_J(...))
+   def head_J(...): long = this.head
+   def tail: Node[T] = this.tail
+ }
+\end{lstlisting-nobreak}
+
+This translation scheme, although not the only one, satisfies the three criteria set above.
 
 \subsection{Fast Path vs Slow Path}
 
-% Example
+The translation also hints at an optimization that can be done: given a value of type |Node[T]| where |T| is either a primitive or known to be miniboxed, the compiler can call |head_J| instead of |head|, skipping a conversion. The following code:
 
 \begin{lstlisting-nobreak}
- def foo[`@miniboxed` T](t: T) = bar(t)
- def bar[T](t: T) = baz(t)
- def baz[`@miniboxed` T](t: T) = t
+ val n = new Node[Int](3, null)
+ n.head
 \end{lstlisting-nobreak}
 
-% Limitations + explaining the slowdowns involved
+Gets translated to:
 
-% Fast path vs slow path
+\begin{lstlisting-nobreak}
+ val n = new `Node_J`(..., 3, null)
+ n.head_J(...)
+\end{lstlisting-nobreak}
 
-\subsection{Object Specialization}
+This allows the miniboxed code to operate only on the miniboxed representation, without the need to box values at any point. However, using erased generics forces the use of the generic class. Consider the generic following method, which is not miniboxed:
 
-% Object encoding => Example
+\begin{lstlisting-nobreak}
+ def newNode[T](head: T, tail: Node[T]) =
+   new Node[T](t, tail)
+\end{lstlisting-nobreak}
 
-% Used in the Scala compiler for Functions, Tuples, etc
+During the compilation of this method, according to erased generics, the compiler is forced to make a choice: Which class to instantiate for the |new| operator in the code? Since the |newNode| method can be called with both primitives and objects, but there is only one version (since it's erased), the only valid choce is |Node_L|, thus boxing primitives:
 
-% Communicating between miniboxing and specialization => boxing => example: Tuple
+\begin{lstlisting-nobreak}
+ def newNode(head: Object, tail: Node) =
+   new `Node_L`(t, tail)
+\end{lstlisting-nobreak}
 
+This shows that erased generics can invalidate the optimistic assumptions in miniboxed code:
+
+\begin{lstlisting-nobreak}
+ val m = newNode[Int](3, null)
+ n.head
+\end{lstlisting-nobreak}
+
+Is translated to:
+
+\begin{lstlisting-nobreak}
+ val m = newNode(Integer.valueOf(3), null)
+ n.head_J // since m is of type Node[Int]
+\end{lstlisting-nobreak}
+
+Since the call |head_J| occurs on a |Node_L| class, the class accesses the boxed value, transforms it into a miniboxed value and then returns it. This incurs an important overhead compared to calling |head_J| on a |Node_J| class. This shows how the optimistic assumptions used by the miniboxing and specialization transformations are invalidated by erased generics (\S\ref{sec:advisories}). We will later see how even the inter-operation between specialization and miniboxing needs to go through boxing, produces yet another category of slow paths (\S\ref{sec:library}).
 
