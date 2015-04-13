@@ -1,5 +1,12 @@
 \begin{abstract}
 
+Some compiler optimizations always produce better performance while others have an opportunistic nature, producing two or more versions of the code, each with different requirements and execution characteristics. For example, in dynamic languages such as JavaScript, assuming a value will always be an integer allows a fast path to execute ten times faster than the no-assumption slow path, which uses the object representation for its values.
+
+However, implementing opportunistic optimizations as black boxes can be counter-productive, as it becomes very difficult for programmers to predict performance, sometimes even luring them into decisions that harm performance instead of improving it. Furthermore, it imposes a cognitive load, as the programmers also act as the compiler, reasoning about low-level code.
+
+In this paper we present our work on making the opportunistic miniboxing optimization transparent, offering programmers insights about where the code is going to lose optimality and how to prevent that. We show several mechanisms that address different transparency problems: performance advisories explain how to avoid performance pitfalls, reflection allows programmers to peek at the transformation results at runtime and object transformations allow us to bridge hostile API with miniboxing-optimized code, maximizing performance.
+
+Our benchmarks show how missing any of these elements can severely harm the overall performance, with slowdowns of up to 14x when shutting down some of the miniboxing transformation components. We also have a recorded demo of how naive programmers can use performance advisories to improve execution of their programs by 5x just by following the simple instructions given by the miniboxing transformation.
 
 % \keywords{data representation, jvm, bytecode, compatibility, transformation, optimization, safety, semantics}
 \end{abstract}
