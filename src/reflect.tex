@@ -1,4 +1,4 @@
-\section{Improving The Programmer Experience}
+\section{Avoiding Programmer-induced Slow Paths}
 \label{sec:advisories}
 
 In this section, we show how compile-time performance advisories allow programmers to avoid performance pitfalls and how they can use reflection to expose internal state at run-time. %First, we will present the need for performance advisories and introduce the different types of advisories that exist today. A discussion about the motivation for introducing the MbReflection API will follow, along with examples to demonstrate its functionality.
@@ -154,7 +154,7 @@ The question asked is whether to transform the call to |foo| into a call to |foo
 
 As we will see in the benchmarking section (\S\ref{sec:bench}), the performance advisories allow programmers who are not familiar with the transformation to make the changes an expert in the area would do.
 
-\subsection{Exposing Internal State}
+\subsection{Data Representation Reflection}
 
 % motivation - define different run time behavior based on class type argument
 %Performance advisories provide the programmer with compile-time warnings when code is sub-optimal, and as mentioned above, there are mechanisms to suppress them. This leads to cases where but still enforce strictness and define a separate run-time behavior for the class if its type argument is a primitive or reference type

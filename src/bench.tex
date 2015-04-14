@@ -1,0 +1,63 @@
+\section{Benchmarks}
+\label{sec:bench}
+
+I have the following:
+
+\begin{compactitem}
+\item PNWScala - 4x speedup on a image library only based on performance advisories
+\item Scala Streams - 14x
+\item Pellucid analytics - 10x
+\item Tuple benchmarks from Milos - 3x
+\item MbArray numbers from Romain - 4x
+\end{compactitem}
+
+
+
+\begin{table}[t]
+  \begin{tabularx}{0.48\textwidth}{|g *{3}{|Y}|} \hline
+    \rowcolor{Gray}
+    \textbf{Benchmark} & \textbf{Generic} & \textbf{Miniboxed}& \textbf{Miniboxed} \\
+    \rowcolor{Gray}
+                       &                  &                   & +functions \\ \hline
+    Sum              &              100.6 ms &              355.9 ms &             12.0 ms \\
+    SumOfSquares     &              188.3 ms &              450.9 ms &             13.0 ms \\
+    SumOfSqEven      &              130.8 ms &              300.4 ms &             52.2 ms \\
+    Cart             &              220.6 ms &              560.2 ms &             55.3 ms \\ \hline
+  \end{tabularx}
+  \vspace{-2mm}
+  \caption{Scala Streams pipelines for 10M elements.}
+  \label{table:streams}
+  \vspace{-1em}
+\end{table}
+
+\subsubsection{The Scala-Streams library} draws its inspiration from Java 8 streams and other libraries. It has been described in the literature \cite{biboudis_clash_2014} and is available as an open-source implementation \cite{biboudis-streams}. In its continuation-based design, each stream combinator provides a function that is stacked to form a transformation pipeline. As the consumer reads from the final stream, the transformation pipeline is executed, processing an element from the source into an output element. However, the pipeline architecture is complex, since combinators such as |filter| may drop elements, stalling the pipeline. This makes the Scala Streams an interesting platform to study the performance benefits of the miniboxing transformation and, in turn, of our |adrt| precursor.
+
+Without going into the details of the benchmarks, which are covered in \cite{biboudis_clash_2014}, Table \ref{table:streams} shows the results with and without our |adrt| precursor extension, showing up to 14.5x speedups when functions are optimized.
+
+
+\subsubsection{The Framian Vector implementation} is an exploration into deeply specializing the immutable |Vector| bulk storage without using reified types \cite{tixxit-respecialization15,tixxit-respecialization6}. This is a benchmark performed by a commercial specialization/miniboxing user in the Scala community. Table \ref{table:framian} shows a 4.4x speed improvement when the function representation is optimized.
+
+% normal exec:
+% [info] Benchmark                                       Mode  Samples        Score  Score error  Units
+% [info] r.VecMapBenchmark.squareDoubleArrayWithLoop    thrpt       20  1532951.740    10201.172  ops/s
+% [info] r.VecMapBenchmark.squareDoubleArrayWithMap     thrpt       20    74578.832      644.821  ops/s
+% [info] r.VecMapBenchmark.squareDoubleVec              thrpt       20  1418579.315    10376.822  ops/s
+% with -P:minibox:library-functions
+% [info] Benchmark                                       Mode  Samples        Score  Score error  Units
+% [info] r.VecMapBenchmark.squareDoubleArrayWithLoop    thrpt       20  1540313.539    18644.313  ops/s
+% [info] r.VecMapBenchmark.squareDoubleArrayWithMap     thrpt       20    89519.549      760.324  ops/s
+% [info] r.VecMapBenchmark.squareDoubleVec              thrpt       20   324700.925     3609.481  ops/s
+\begin{table}[t]
+  \begin{tabularx}{0.48\textwidth}{|g *{1}{|Y}|} \hline
+    \rowcolor{Gray}
+    \textbf{Benchmark}             &  \textbf{Running time} \\ \hline
+    Manual C-like code             &         0.650 $\mu$s \\
+    Miniboxing with functions      &         0.705 $\mu$s \\
+    Miniboxing without functions   &         3.080 $\mu$s \\
+    Generic                        &        13.409 $\mu$s \\ \hline
+  \end{tabularx}
+  \vspace{-2mm}
+  \caption{Mapping a 1K vector.}
+  \label{table:framian}
+  \vspace{-1em}
+\end{table}
