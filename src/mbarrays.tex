@@ -272,6 +272,42 @@ Is translated to:
 
 Where the |mbArray_apply| method contains the optimistic assumption that the |MbArray| is going to contain the miniboxed version of the |MbArray| class, containing an underlying array of long integers:
 
+\begin{table}[t]
+  \centering
+  \begin{tabularx}{0.48\textwidth}{|g *{3}{|Y}|} \hline
+    \rowcolor{Gray}
+    \textbf{Benchmark} & \textbf{Generic}      & \textbf{Miniboxed}     & \textbf{Miniboxed} \\
+    \rowcolor{Gray}    &                       &  some                  &  all               \\
+    \rowcolor{Gray}    &                       &  advisories            &  advisories        \\
+    \rowcolor{Gray}    &                       &  heeded                &  heeded            \\ \hline
+    1st run            &               4192 ms &               3082 ms &             1346 ms \\
+    2nd run            &               4957 ms &               2998 ms &             1187 ms \\
+    3rd run            &               4755 ms &               3017 ms &             1178 ms \\
+    4th run            &               3969 ms &               2535 ms &             1094 ms \\
+    5th run            &               4073 ms &               2615 ms &             1163 ms \\ \hline
+  \end{tabularx}
+  \vspace{-2mm}
+  \caption{Speedups based on performance advisories, PNWScala}
+  \label{table:pureimage}
+  \vspace{-1em}
+\end{table}
+
+\begin{table}[b]
+  \begin{tabularx}{0.48\textwidth}{|g *{1}{|Y}|} \hline
+    \rowcolor{Gray}
+    \textbf{Transformation} & \textbf{Running time}  \\ \hline
+    Monomorphic             &              318.1 ms  \\
+    Specialized             &              322.5 ms  \\
+    Miniboxed + Tuples      &              323.2 ms  \\
+    Miniboxed               &              726.8 ms  \\
+    Generic                 &              684.4 ms  \\ \hline
+  \end{tabularx}
+  \vspace{-2mm}
+  \caption{Sorting 1M tuples using quicksort.}
+  \label{table:tuple}
+  \vspace{-1em}
+\end{table}
+
 \begin{lstlisting-nobreak}
  def mbArray_apply_J[T](T_Type: Byte, a: MbArray[T], idx: Int): Long =
    a match {
@@ -291,5 +327,5 @@ To conclude, the opportunistic nature of the |MbArray| coupled with performance 
   \item Accesses elements efficiently (if advisories are heeded).
 \end{compactitem}
 
-The next section presents a series of benchmarks which show how the miniboxing transformation integrates with the changes presented.
+The next section presents a set of benchmarks that show how these transformations impact performance.
 
