@@ -85,11 +85,71 @@ Our measurements show that we obtain a 2x speedup using the accessors approach a
 \subsection{Functions}
 
 % Challenge => automatic desugaring + specialization
-
-% New API => desugaring by hand
+The same syntax challenge applies to functions. In our early experiments on transforming the Scala collections hierarchy using the miniboxing transformation \cite{miniboxing-linkedlist}, we were proposing an alternative |MbFunction| and desugaring by hand. The performance obtained was good, but desugaring by hand was too tedious. Later on, we received a suggestion from the Scala community (thanks to Alex Nedelcu!) stating that, since functions in Scala are specialized, we should be able to interface directly, thus benefiting from the desugaring build into Scala without paying for the boxing overhead.
 
 % Accessors => pay each time
+The first approach was using accessors, but we soon learned that switching on as many as 3 type bytes with each function application incurs a significant overhead. Instead, we decided to fast-path the function application while turning function creation into a slow path. The reasoning was that functions are usually created once but applied many times, so any delay in the creation amortizes over many applications. Indeed, the benchmarks show speedups from 2x to 14x when using miniboxed functions. The key to this is replacing the Scala |FunctionsX| by |MbFunctionX|, where |X|, the function arity, is either 0, 1 or 2 (the functions with greater arity are not specialized, due to the bytecode explosion problem):
+
+\begin{lstlisting-nobreak}
+ def choice[@miniboxed T](seed: Int): `(T, T) => T` =
+   (t1: T, t2: T) => if (seed % 2 == 0) t1 else t2
+
+ val function: `Int => Int` = choice(Random.nextInt)
+ List((1,2), (3,4), (5,6)).map(`function`)
+\end{lstlisting-nobreak}
+
+Explaining how the transformation occurs in detail is beyond the scope of this paper and has been studied in previous work \cite{ldl,ildl-tech}. However, there are four ways in which slow paths can occur as a result of the transformation:
+\begin{compactitem}
+  \item Converting |FunctionX| objects to |MbFunctionX|;
+  \item Converting |MbFunctionX| objects to |FunctionX|;
+  \item Applying the |FunctionX| object extracted from an |MbFunctionX|;
+  \item Applying the |MbFunctionX| object generated from a |FunctionX|;
+\end{compactitem}
+
+Let us look at the result of the translation:
+
+\begin{lstlisting-nobreak}
+ def choice(seed: int): `MbFunction2` =
+   new AbstractMbFunction2_LL {
+     def apply(t1: Object, t2: Object) = ...
+     val functionX: Function2 = ...
+   }
+ def choice`_J`(T_Type: byte, seed: int): `MbFunction2` =
+   new AbstractMbFunction2_JJ {
+     def apply_JJ(..., t1: long, t2: long) = ...
+     val functionX: Function2 = ...
+   }
+
+ val function: `MbFunction2` = choice_J(...)
+ List((1,2), (3,4), (5,6)).map(`function.functionX`)
+\end{lstlisting-nobreak}
 
 % Wrapping objects, coercions and LDL
+What we can see from the translation is that anonymous Scala |Function|s are automatically transformed to |MbFunction|s and that |MbFunction|s have a dual nature: they contain both the miniboxed code for the function and the specialized |Function| equivalent. Therefore, the cost of converting from one function representation to the other is as low as accessing a field (the function object in the |functionX| field also holds a reference to the outer |MbFunction|). This addresses the first two possible slowdowns.
 
-% Optimizations
+The third overhead is addressed by allowing the object in the |functionX| field to directly call the miniboxed function with very little overhead, by converting from unboxed primitive values to miniboxed values and back, without then need for boxing. This imposes a minimum overhead when a function declared in a miniboxed scope is passed to a library that did not undergo the miniboxing transformation, such as the Scala library (the last line in the example). Therefore, passing functions from miniboxed code back to generic or specialized code is done efficiently.
+
+Finally, the last type of slowdown occurs when a miniboxed function is expected, but the incoming function was defined outside the miniboxed code, resulting in a plain |FunctionX| object. This is the only case where we actually need to perform a switch, extracting the specialized version of the class and wrapping it into a miniboxed function. Since callbacks from the Scala library into miniboxed code are not common (if they exist at all), the slow path of executing this switch rarely occurs.
+
+To recap the four slow paths that can occur:
+
+\begin{compactitem}
+  \item Converting |FunctionX| objects to |MbFunctionX|;
+  \item Converting |MbFunctionX| objects to |FunctionX|;
+  \begin{compactitem}
+    \item Are done by accessing a field in either class, resulting in fast execution. The only case where a slow path occurs is when a function is passed from non-miniboxed code, which is a rare occurrence and is guarded by performance advisories.
+  \end{compactitem}
+  \item Applying the |FunctionX| object extracted from |MbFunctionX|;
+  \begin{compactitem}
+    \item Occurs without boxing, since the |FunctionX| object directly converts arguments to the miniboxed encoding.
+  \end{compactitem}
+  \item Applying the |MbFunctionX| object generated from |FunctionX|;
+  \begin{compactitem}
+    \item Occurs without boxing, since we match the specialized variant of the |FunctionX| and only convert the miniboxed encoding to unboxed generics.
+  \end{compactitem}
+\end{compactitem}
+
+
+
+Therefore, the |MbFunction| encoding allows us to call functions without boxing their values and offsets the slow path to a very remote use case, which is also guarded by performance advisories. The next subsection looks into arrays.
+
