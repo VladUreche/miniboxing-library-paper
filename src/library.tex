@@ -53,7 +53,7 @@ This solution works well with most of the code that lies within the programmer's
    (f(tup._1), f(tup._2))
 \end{lstlisting-nobreak}
 
-Despite the miniboxing annotations, all versions of the |tupleMap| method use the erased generic versions of the tuple acessors and the function application, leading to slow paths irreversibly creeping into miniboxed code. For many applications, this is a no-go, so our task was to eliminate these cases. In the following subsection we present three possible approaches and show where each works best.
+Despite the miniboxing annotations, all versions of the |tupleMap| method use the erased generic versions of the tuple accessors and the function application, leading to slow paths irreversibly creeping into miniboxed code. For many applications, this is a no-go, so our task was to eliminate these cases. In the following subsection we present three possible approaches and show where each works best.
 
 \subsection{Eliminating Inter-operation Overhead}
 
@@ -70,7 +70,7 @@ The next section discusses three Scala library classes for which the miniboxing 
 \subsection{Tuples}
 \label{sec:tuples}
 
-The Scala programming language offers a very concise and pleasant syntax for library tuples, allowing users to write |(3,5)| instead of the desugared |new Tuple2[Int, Int](3,5)|. Similarily, it allows programmers to write |(Int, Int)| instead of |Tuple2[Int, Int]|. If we were to introduce miniboxed tuples, we would not be able to use the syntactic sugar to express programs, losing the support of many programmers. Instead, we're looking into ways to access specialized tuples efficiently, without boxing values.
+The Scala programming language offers a very concise and pleasant syntax for library tuples, allowing users to write |(3,5)| instead of the desugared |new Tuple2[Int, Int](3,5)|. Similarly, it allows programmers to write |(Int, Int)| instead of |Tuple2[Int, Int]|. If we were to introduce miniboxed tuples, we would not be able to use the syntactic sugar to express programs, losing the support of many programmers. Instead, we're looking into ways to access specialized tuples efficiently, without boxing values.
 
 Although we haven't measured rigorously, our experience suggests that |Tuple| classes are usually created just to have their components accessed a few times during their life. Therefore, both for compatibility reasons and to avoid costly conversions, we decided to allow the |Tuple| class to remain unchanged, instead focusing on providing accessors and constructors to provide compatibility.
 

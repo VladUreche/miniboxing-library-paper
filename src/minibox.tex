@@ -74,7 +74,7 @@ Since the type parameter is annotated with |@miniboxed|, the compiler\footnote{I
 
 Alert readers will notice the |minibox2int| and |int2minibox| transformations act exactly like the boxing coercions in the case of  erased generics. This is true, the values are being coerced to the miniboxed representation, much like in the case of erasure, but on the Java Virtual Machine platform our benchmarks have shown that the miniboxing conversion cost is completely eliminated when compiling the code to native x86 assembly. Further benchmarking has shown that the code matches the performance of specialized code within a 10\% slowdown due to coercions \cite{miniboxing}.
 
-There is an elipsis in the definition of the |identity_M| method, which stands for what we call a type byte: a byte describing the type encoded in the long integer, allowing the operations such as |toString|, |hashCode| or |equals| to be executed correctly on encoded values, treating them as the original primitive (corresponding to |T|) rather than long integers. Although the transformation looks simple, there are many subtleties we have to take into account when transforming the code \cite{miniboxing,miniboxing-linkedlist,ldl}.
+There is an ellipsis in the definition of the |identity_M| method, which stands for what we call a type byte: a byte describing the type encoded in the long integer, allowing the operations such as |toString|, |hashCode| or |equals| to be executed correctly on encoded values, treating them as the original primitive (corresponding to |T|) rather than long integers. Although the transformation looks simple, there are many subtleties we have to take into account when transforming the code \cite{miniboxing,miniboxing-linkedlist,ldl}.
 
 \subsection{Class Transformation}
 
@@ -151,7 +151,7 @@ This allows the miniboxed code to operate only on the miniboxed representation, 
    new Node[T](t, tail)
 \end{lstlisting-nobreak}
 
-During the compilation of this method, using to erased generics, the compiler is forced to make a choice: Which class to instantiate for the |new Node[T]|? Since the |newNode| method can be called with both primitives and objects, but there is only one version (since it's erased), the only valid choce is |Node_L|, thus boxing primitives:
+During the compilation of this method, using to erased generics, the compiler is forced to make a choice: Which class to instantiate for the |new Node[T]|? Since the |newNode| method can be called with both primitives and objects, but there is only one version (since it's erased), the only valid choice is |Node_L|, thus boxing primitives:
 
 \begin{lstlisting-nobreak}
  def newNode(head: Object, tail: Node) =
