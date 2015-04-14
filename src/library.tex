@@ -2,10 +2,62 @@
 \label{sec:library}
 
 % Section - library + miniboxing => boxing, how to avoid it, example
+In this section we will show how slow paths occur when miniboxed code interacts with the Scala standard library, which uses either erased generics or the original specialization transformation, which generates 10 variants per type parameter. We show three approaches to avoiding the slow path and show how each of them fits with the library entities.
 
 % The problem
+When interacting with the library from miniboxed code, the programmers are aware functions and tuples are specialized, so they expect to have automatic and flawless performance when using them. However, calling specialized code from miniboxed code and vice-versa is not trivial:
 
-% The three solutions
+\begin{lstlisting-nobreak}
+ def mbox[@miniboxed T](t: T): String = spec(t)
+ def spec[@specialized T](t: T): String = t.toString
+\end{lstlisting-nobreak}
+
+The translated low-level code is:
+
+\begin{lstlisting-nobreak}
+ def mbox(t: Object): String = `spec(t)`
+ def mbox`_J`(T_Type: byte, t: long): String = `???`
+ def spec(t: Object): String = t.toString
+ def spec`_I`(t: int): String = Integer(t).toString
+ def spec`_J`(t: long): String = Long(t).toString
+ ... // other 7 specialized variants
+\end{lstlisting-nobreak}
+
+The generic |mbox| method calls |spec|, since there is a 1 to 1 correspondence between them. This is not the case for |mbox_J| and the nine specializations of method |spec|. And while it may seem like |mbox_J| could directly invoke |spec_J|, since the argument type matches, this would be incorrect, as |t| in |mbox_J| can be any primitive type, including boolean, whereas |spec_J| would treat the encoding as a long integer (thus, instead of returning the string ``true'' or ``false'', it would return the encoded value of the boolean).
+
+The |mbox_J| method is in possession of one more piece of information: |T_Type|, the type byte describing the encoded primitive type. In order to call the correct specialized method, |mbox_J| could switch on the type byte and perform the correct conversion:
+
+\begin{lstlisting-nobreak}
+ def mbox`_J`(T_Type: byte, t: long): String =
+   T_Type match {
+     case INT => spec_I(minibox2int(t))
+     case LONG => spec_J(minibox2long(t))
+     ...
+   }
+\end{lstlisting-nobreak}
+
+Although this approach seems to work, it takes a step back on the transparency scale: the miniboxing transformation would be introducing extra work without offering the programmer any feedback on how and why this happened. Furthermore, multiple type bytes may be involved in the switch, generating a combinatorial explosion which is likely to confuse the Java Virtual Machine heuristics for inlining, leading to sudden (and difficult to debug) slow paths.
+
+It may seem like the other way around would be much easier, allowing specialized code to call miniboxed code without performing a switch. However this is not the case since the specialization transformation is not aware of miniboxing. Therefore, when calling miniboxed methods, specialization resorts to invoking the generic version, boxing the arguments and unboxing the returned value.
+
+With these aspects in mind, our decision was to go with simplicity and symmetry: both miniboxing and specialization go through boxing when calling each other's transformed code. To allow transparency, miniboxing issues performance advisories about specialized code that should be miniboxed:
+
+\begin{lstlisting-nobreak}
+ def mbox`_J`(T_Type: byte, t: long): String =
+   // performance advisory: forward warning
+   spec(minibox2box(T_Type, t))
+\end{lstlisting-nobreak}
+
+This solution works well with most of the code that lies within the programmer's control, including for the case where 3rd party libraries distribute either a specialized or a miniboxed version. However, the one library which cannot have multiple versions and happens to use specialization is the Scala standard library:
+
+\begin{lstlisting-nobreak}
+ def tupleMap[@miniboxed T, @miniboxed U](tup: (T, T), f: T => U): (U, U) =
+   (f(tup._1), f(tup._2))
+\end{lstlisting-nobreak}
+
+Despite the miniboxing annotations, all versions of the |tupleMap| method use the erased generic versions of the tuple acessors and the function application, leading to slow paths irreversibly creeping into miniboxed code. For many applications, this is a no-go, so our task was to eliminate these cases. In the following subsection we present three possible approaches and show where each works best.
+
+\subsection{Eliminating Inter-operation Overhead}
 
 % Wrapping objects
 
