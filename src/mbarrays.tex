@@ -1,4 +1,4 @@
-\section{Arrays}
+\subsection{Arrays}
 \label{sec:mbarrays}
 
 % Arrays = Efficient bulk storage => The underlying container for many collections.
@@ -40,7 +40,7 @@ With this transformation, accessing the array becomes more involved: the program
 
 Another thing to notice is that the |Array[T]| type in the signature of |first| is transformed into |Object|: at the JVM level, primitive arrays such as |int[]|, |float[]| and |Object[]| have a single common parent class, which is |java.lang.Object|. This explains why there is a need to match the primitive array type: the |Array| class offered by Scala does not really exist, it's simply an abstraction over the primitive arrays offered by the JVM.
 
-\subsection{Instantiating Arrays}
+\subsubsection{Instantiating Arrays}
 
 % But this optimization prevents instantiation of arrays in a generic context, because we cannot know at compile time which of int[], double[], Object[], etc we need to allocate.
 Although the array representation invariant looks like a good deal so far, it introduces an unexpected problem: how to instantiate generic arrays? Exactly like accessing or updating an array, instantiating one must abide by the array invariant. Yet, with the erasure transformation, all traces of a generic type parameter |T| are removed, transforming the code:
@@ -64,7 +64,7 @@ The |newArray| method should be able to produce any primitive array, based on th
 \end{lstlisting-nobreak}
 
 % Option 1 : Using a ClassTag for the type parameter can give us this info at runtime.
-\subsubsection{Reified types.} To address this issue, Scala offers the |ClassTag| mechanism, which can be used to provide runtime information about a type parameter. This allows |newArray| to produce the correct primitive type:
+\textbf{Reified types.} To address this issue, Scala offers the |ClassTag| mechanism, which can be used to provide runtime information about a type parameter. This allows |newArray| to produce the correct primitive type:
 
 \begin{lstlisting-nobreak}
  def newArray[T: `ClassTag`] = new Array[T](10)
@@ -122,7 +122,7 @@ This shows that generic code must be transitively modified to propagate |ClassTa
 % Option 2 : Always allocate Object[] (Array[AnyRef]) and use .asInstanceOf[Array[T]] on the object array to make the user believe.
 % Problem 3 : This breaks the invariant Array[X] => x[] when X is a primitive. (show example of code that makes the JVM crash)
 % 	=> The array must not escape, but this can be hard to guarantee.
-\subsubsection{Breaking the invariant.} Another way to deal with this issue, without using |ClassTag|s, is to always instantiate |Array[AnyRef]| and force the compiler believe it is an |Array[T]|:
+\textbf{Breaking the invariant.} Another way to deal with this issue, without using |ClassTag|s, is to always instantiate |Array[AnyRef]| and force the compiler believe it is an |Array[T]|:
 
 \begin{lstlisting-nobreak}
  def baz[T] = `new Array[AnyRef](10).asInstanceOf[Array[T]]`
@@ -139,8 +139,7 @@ Therefore, the approach can only be used in scenarios where it is guaranteed to 
 
 
 
-\subsubsection{Specialized arrays.}
-Scala offers another feature, specialization, which can help enhancing performances of generic code under certain circumstances. When specializing the type parameter of a function, different variant of this function are generated, each of them being optimized for a specific instance of the type parameter. Hence, generic array accesses that occur in the specialized declinations of a function can benefit from optimizations. For example, we can specialize the type parameter of our function |first| for |Int|:
+\textbf{Specialized arrays.} Scala offers another feature, specialization, which can help enhancing performances of generic code under certain circumstances. When specializing the type parameter of a function, different variant of this function are generated, each of them being optimized for a specific instance of the type parameter. Hence, generic array accesses that occur in the specialized declinations of a function can benefit from optimizations. For example, we can specialize the type parameter of our function |first| for |Int|:
 
 % If the code is specialized, array access is automatically optimized:
 %   def first[@specialized T](a: Array[T]): T = a(0)
@@ -211,8 +210,7 @@ So far, we have seen three ways from which to tackle the issue:
 \end{itemize}
 
 % a natural question: can we combine the three approaches before to get something working?
-\subsubsection{Miniboxed arrays.}
-Would it be possible to combine the three approaches seen so far to get something working? In this subsection we present how |MbArray| achieves this synthesis, keeping the main advantages of each approach and dropping their disadvantages.
+\textbf{Miniboxed arrays.} Would it be possible to combine the three approaches seen so far to get something working? In this subsection we present how |MbArray| achieves this synthesis, keeping the main advantages of each approach and dropping their disadvantages.
 
 % enter MbArray:
 %  - invariant approach      => advantage:    solves array instantiation problem

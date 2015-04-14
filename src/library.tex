@@ -62,17 +62,18 @@ Despite the miniboxing annotations, all versions of the |tupleMap| method use th
 We now discuss three approaches to eliminating the boxing overhead when calling specialized code from miniboxed classes and/or methods.
 
 % Accessors
-\subsubsection{Accessors.} The simplest answer to the problem of inter-operating with specialization is to switch on the type byte, as shown above. To avoid confusing the Java Virtual Machine inlining heuristics, we can extract the operation into a static method, that we call separately. This approach needs to be implemented both for accessors, allowing the specialized values to be extracted directly into the miniboxed encoding and for constructors, allowing miniboxed code to instantiate specialized classes without boxing. This is the approach taken for |Tuples|.
+\subsubsection{Accessors.} The simplest answer to the problem of inter-operating with specialization is to switch on the type byte, as shown above. To avoid confusing the Java Virtual Machine inlining heuristics, we can extract the operation into a static method, that we call separately. This approach needs to be implemented both for accessors, allowing the specialized values to be extracted directly into the miniboxed encoding and for constructors, allowing miniboxed code to instantiate specialized classes without boxing. This is the approach taken for |Tuples| (\S\ref{sec:tuples});
 
 % Wrapping objects
-\subsubsection{Wrapping objects.} The accessors approach allows us to pay a small (but non-zero) overhead with each access, which is a good tradeoff when the values accessed are only accessed a couple of times during the lifetime of the object. In other cases, such as functions, the |apply| method is expected to be called many times during the object lifetime, making the overhead of the |apply| method undesirable. In this case, another approach is to introduce a wrapper object, in this case |MiniboxedFunction| which exposes a miniboxed |apply| method and does not need to switch on the type byte in order to call the wrapped function: the switch is done when wrapping the function and is a one-time cost, which then amortizes over many function applications.
+\subsubsection{Wrapping objects.} The accessors approach allows us to pay a small (but non-zero) overhead with each access, which is a good tradeoff when the values accessed are only accessed a couple of times during the lifetime of the object. In other cases, such as functions, the |apply| method is expected to be called many times during the object lifetime, making the overhead of the |apply| method undesirable. In this case, another approach is to introduce a wrapper object, in this case |MiniboxedFunction| which exposes a miniboxed |apply| method and does not need to switch on the type byte in order to call the wrapped function: the switch is done when wrapping the function and is a one-time cost, which then amortizes over many function applications (\S\ref{sec:functions});
 
 % New API
-\subsubsection{New API.} In some cases, the API and guarantees are hardcoded into the compiler. This is the case for the Scala |Array| class, for which the miniboxing plugin chose the Accessors approach \cite{miniboxing}. However, several limitations of Scala arrays can be eliminated by defining a new |MbArray| class. This approach will be discussed in detail in the Arrays subsection (\S\ref{sec:arrays}).
+\subsubsection{New API.} In some cases, the API and guarantees are hardcoded into the compiler. This is the case for the Scala |Array| class, for which the miniboxing plugin chose the Accessors approach \cite{miniboxing}. However, several limitations of Scala arrays can be eliminated by defining a new |MbArray| class. This approach will be discussed in detail in the Arrays subsection (\S\ref{sec:mbarrays}).
 
 The next section discusses three Scala library classes for which the miniboxing plugin uses the approaches above.
 
 \subsection{Tuples}
+\label{sec:tuples}
 
 % Challenge => custom syntax + automatic desugaring => we want to keep that
 The Scala programming language offers a very concise and pleasant syntax for library tuples, allowing users to write |(3,5)| instead of the desugared |new Tuple2[Int, Int](3,5)|. Similarily, it allows programmers to write |(Int, Int)| instead of |Tuple2[Int, Int]|. If we were to introduce miniboxed tuples, we would not be able to use the syntactic sugar to express programs, losing the support of many programmers. Instead, we're looking into ways to access specialized tuples efficiently, without boxing values.
@@ -83,6 +84,7 @@ Although we haven't measured rigorously, our experience suggests that |Tuple| cl
 Our measurements show that we obtain a 2x speedup using the accessors approach and we are within 5\% of the specialized (and monomorphic) code for a larger tuple quicksort benchmark.
 
 \subsection{Functions}
+\label{sec:functions}
 
 % Challenge => automatic desugaring + specialization
 The same syntax challenge applies to functions. In our early experiments on transforming the Scala collections hierarchy using the miniboxing transformation \cite{miniboxing-linkedlist}, we were proposing an alternative |MbFunction| and desugaring by hand. The performance obtained was good, but desugaring by hand was too tedious. Later on, we received a suggestion from the Scala community (thanks to Alex Nedelcu!) stating that, since functions in Scala are specialized, we should be able to interface directly, thus benefiting from the desugaring build into Scala without paying for the boxing overhead.
@@ -148,8 +150,6 @@ To recap the four slow paths that can occur:
     \item Occurs without boxing, since we match the specialized variant of the |FunctionX| and only convert the miniboxed encoding to unboxed generics.
   \end{compactitem}
 \end{compactitem}
-
-
 
 Therefore, the |MbFunction| encoding allows us to call functions without boxing their values and offsets the slow path to a very remote use case, which is also guarded by performance advisories. The next subsection looks into arrays.
 
