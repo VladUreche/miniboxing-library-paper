@@ -1,0 +1,254 @@
+\section{Improving The Programmer Experience}
+\label{sec:advisories}
+
+In this section, we show how compile-time performance advisories allow programmers to avoid performance pitfalls and how they can use reflection to expose internal state at run-time. %First, we will present the need for performance advisories and introduce the different types of advisories that exist today. A discussion about the motivation for introducing the MbReflection API will follow, along with examples to demonstrate its functionality.
+
+\subsection{Performance Advisories}
+
+%what are the performance advisories and what is their purpose
+% 2 problems:
+%	- programmer not aware of possible optimizations in the code
+%	- programmer not aware of limitations of optimizer
+% Silent failure - using performance advisories this is avoided
+% Shown in form of compile-time warnings
+% Improve code performance up to 5 times
+A fundamentally difficult problem with using miniboxing is determining when the code has reverted to using boxed primitives. Having miniboxed code use boxed primitives is most commonly caused by interacting with erased generics and specialization, but can also be caused by technical or design limitations. While all these cases lead to correct and semantically-equivalent code, they do produce noticeable slowdowns. % These limitations can occur at different levels, from well-understood design decisions that sacrifice certain code patterns, to purely technical limitations where the problem is simply not worth the effort to solve.
+
+When boundary conditions or limitations occur in a typical opaque transformation, the optimization process silently fails, and doesn't give the programmer any useful information about what happened. Instead, the miniboxing transformation provides the programmer with a detailed report of the error followed by the common workaround or links to in-depth discussions on the topic. Using this feature, novice programmers can fine-tune their programs without a thorough understanding of the transformation. %This is exactly the function of performance advisories in the Miniboxing plugin. They aim to provide the user with useful compile-time warnings that explain why code could not be fully optimized by specializing generics and detail how the code can be improved in order to achieve the best performance.
+
+% Besides limitations of the optimizer, it is also possible for the code to be written in a manner that does not fully utilize compiler's optimization potential. Performance advisories of Minibox plugin will assist the programmer in this situation by exposing code where the plugin wasn't able to correctly specialize generics, pointing out exactly what the problem was and suggesting ways to fix it. Introduced performance advisories play an important role by helping improve the performance of a program significantly. Benchmarks show that applying the compilers suggested changes can improve overall performance by up to 4x.
+
+There are as many as 10 different performance advisories implemented in the miniboxing plugin, but in order to focus on the concept, we will only look at the two most common advisories, both caused by the interaction with erased generics. To show exactly how the slowdowns occur, we can take the following piece of code:
+
+\begin{lstlisting-nobreak}
+ def foo[`@miniboxed` T](t: T): T = bar(t)
+ def bar[`@miniboxed` T](t: T): T = baz(t)
+ def baz[`@miniboxed` T](t: T): T = t
+\end{lstlisting-nobreak}
+
+The code is transformed to:
+
+\begin{lstlisting-nobreak}
+ def foo(t: Object): Object = bar(t)
+ def bar(t: Object): Object = baz(t)
+ def baz(t: Object): Object = t
+ def foo`_J`(..., t: long): long = bar`_J`(..., t)
+ def bar`_J`(..., t: long): long = baz`_J`(..., t)
+ def baz`_J`(..., t: long): long = t
+\end{lstlisting-nobreak}
+
+The translation shows that once execution entered the miniboxed path, by calling |foo_J|, it goes through without any boxing, only passing the value in the encoded (miniboxed) representation. However, let us think of what happens if the |@miniboxed| annotation is removed from method |bar|:
+
+\begin{lstlisting-nobreak}
+ def foo[`@miniboxed` T](t: T): T = bar(t)
+ def bar[T](t: T): T = baz(t)
+ def baz[`@miniboxed` T](t: T): T = t
+\end{lstlisting-nobreak}
+
+This produces the following code:
+
+\begin{lstlisting-nobreak}
+ def foo(t: Object): Object = bar(t)
+ def bar(t: Object): Object = baz(t)
+ def baz(t: Object): Object = t
+ def foo_J(..., t: long): long = `box2minibox(bar(minibox2box(t)))` // boxing :(
+ def baz_J(..., t: long): long = t
+\end{lstlisting-nobreak}
+
+There are two problems that occur here:
+
+\begin{compactitem}
+ \item Method |foo| does not have a miniboxed version of |bar| to call;
+ \item Once the erased |bar| method is called, the call stack is generic, despite the fact that there is a miniboxed version of |baz| (but it is not valid to call it, as the argument may not be a primitive).
+\end{compactitem}
+
+These two problems correspond exactly to the two types of performance advisories: forward and backward.
+
+\subsubsection{Forward advisories.} The first advisory (compiler warning) received by the programmer is also called a forward warning:
+
+\begin{lstlisting-nobreak-nolang}
+test.scala:7: warning: The method bar would benefit from miniboxing type parameter T, since it is instantiated by miniboxed type parameter T of method foo:
+
+       def foo[@miniboxed T](t: T): T = bar(t)
+                                        ^
+\end{lstlisting-nobreak-nolang}
+
+The name forward comes from the fact that this advisory pushes the miniboxed representation from caller to callee each time the arguments need to be boxed before being passed.
+
+\subsubsection{Backward advisories.} The miniboxing annotation is also propagated from callee to caller:
+
+\begin{lstlisting-nobreak-nolang}
+test.scala:8: warning: The following code could benefit from miniboxing specialization if the type parameter T of method bar would be marked as "@miniboxed T" (it would be used to instantiate miniboxed type parameter T of method baz):
+
+        def bar[T](t: T): T = baz(t)
+                              ^
+\end{lstlisting-nobreak-nolang}
+
+With these warnings, even a novice programmer, not familiar to either the language or the miniboxing transformation is still capable of restoring the optimality of the code.
+
+\subsubsection{Implementation.} Although these warnings may seem very difficult to generate, they are actually less than 5 lines of code. Advisories are generated during the method rewiring decision, which decides which method to call (the miniboxed or the generic one). To do so, it looks at the type parameters and the type arguments in parallel:
+
+\begin{lstlisting-nobreak}
+ (tpars zip targs).flatMap {
+   case (tpar, PrimitiveType) =>
+     if (!tpar.isMiniboxed)
+       // non-miniboxed type param instantiated by
+       // primitive type -- forward warning
+     (tpar, Miniboxed)
+   case (tpar, Reference(tpar2)) =>
+     case tpar.isMiniboxed && tpar2.isMiniboxed =>
+       (tpar, Miniboxed)
+     case !tpar.isMiniboxed && !tpar2.isMiniboxed =>
+       (tpar, Erased)
+     case tpar.isMiniboxed && !tpar2.isMiniboxed =>
+       // non-miniboxed type param used to instantiate a
+       // miniboxed type parameter -- backward warning
+       (tpar, Erased)
+     case !tpar.isMiniboxed && tpar2.isMiniboxed =>
+       // miniboxed type param instantiated by erased
+       // type parameter -- forward warning
+       (tpar, Erased)
+   ...
+ }
+\end{lstlisting-nobreak}
+
+For example, given the following code:
+
+\begin{lstlisting-nobreak}
+ val five = foo[Int](5)
+\end{lstlisting-nobreak}
+
+The question asked is whether to transform the call to |foo| into a call to |foo_J|. To do this, we have to decide whether the type parameter of method |foo|, namely |T|, is instantiated by a primitive type or another miniboxed type parameter. In this case, since |Int| is a primitive type, the decision takes the first case, pairing type parameter |T| with the |Miniboxed| tag (and without warning, since |T| is miniboxed). Going back to the decision, the answer is positive, since the type parameter |T| of method |foo| is indeed instantiated by a primitive type:
+
+\begin{lstlisting-nobreak}
+ val five: int = minibox2int(foo`_J`(int2minibox(5)))
+\end{lstlisting-nobreak}
+
+\subsection{Suppressing warnings.} In certain scenarios, programmers are aware of their sub-optimal erased generic code but, due to compatibility requirements with other JVM programs or due to technical limitations, they chose not to change it. In these situations, they need to suppress the warnings, since instead of improving visibility, they prevent a clear picture of the sub-optimalities in the program. However, a coarse-grained approach such as turning off all warnings is not desirable either, since it hides other potentially valuable pieces of information. For this scenario, the miniboxing transformation provides the |@generic| annotation, which can suppress both forward and backward warnings:
+
+\begin{lstlisting-nobreak}
+scala> def zoo[`@miniboxed` T](t: T) = t
+defined method zoo
+
+scala> zoo[Any `@generic`](3) // no forward warning
+res1: Any = 3
+
+scala> def boo[`@generic` T](t: T) = t
+defined method boo
+
+scala> boo[Int](3)                   // no backward warning
+res2: Int = 3
+\end{lstlisting-nobreak}
+
+
+\subsubsection{Libraries.} In other cases boxing is caused by the interaction with erased generics from libraries. In this case, the default decision is not to warn, unless the programmer specifically sets the |-P:minibox:warn-all| compiler flag:
+
+\begin{lstlisting-nobreak}
+scala> 3 :: Nil
+<console>:8: warning: The method scala.collection.immutable.List.:: would benefit from miniboxing type parameter B, since it is instantiated by a primitive type:
+
+              3 :: Nil
+                ^
+res0: List[Int] = List(3)
+\end{lstlisting-nobreak}
+
+
+
+\subsection{Exposing internal state - MbReflection}
+
+% motivation - define different run time behavior based on class type argument
+Performance advisories provide the user with compile-time warnings when code is sub-optimal, and as mentioned above, there is a mechanism to suppress them. However, it is possible that a user want to silence the warnings but still enforce strictness and define a separate run-time behavior for the class if its type argument is a primitive or reference type. Consider the following example: In the immutable |RRB-Vector| implementation, when elements from the front or back are removed, underlying arrays that store elements can be reused. Here, only starting and stopping indices of the resultant immutable vector are updated. However, if |Vector| is used to store references, reusing previous arrays can result in memory leaks (since the arrays keep a reference to the deleted object for the old vector, but create a reference path between the new vector and the deleted element). In this case, the ideal solution would be to change the behavior of the |Vector| class based on the type argument and only reuse the arrays for primitive types.
+
+
+% motivation - if code is expected to be optimized but for some reason, optimization fails and there is no warning about that, define the behavior in that case
+Various limitations can prevent the code from being fully optimized, and the Minibox plugin will try to recognize these and alert the user appropriately. However, it is possible that some unknown limitations exist and, in that case, code optimization can fail silently. To guard against this situation, run-time checks can be conducted to determine if the code has been optimized and define custom behavior to handle the situation.
+
+
+% what is mbreflection
+|MbReflection| exposes internal state by allowing reflecting on the type parameters of miniboxed classes. For example, given |class C[@miniboxed T]|, reflection can determine, at run-time, whether a type parameter is miniboxed, its instantiation, and the type used to store the value. By exposing internal state, |MbReflection| can help in solving the problems mentioned above. Usage is illustrated 	on the following examples:
+\begin{lstlisting-nobreak}
+scala> import MiniboxingReflection._
+	import MiniboxingReflection._
+
+scala> class C[@miniboxed T] {
+    |   override def toString: String =
+    |     s"C[T =${reifiedType[T]}, miniboxed into a ${storageType[T]}]"
+    | }
+	defined class C
+
+scala> new C[Int]
+	res4: C[Int] = C[T = Int, miniboxed into a Long]
+
+scala> new C[Unit]
+	res5: C[Unit] = C[T = Unit, miniboxed into a Long]
+
+scala> new C[Float]
+	res6: C[Float] = C[T = Float, miniboxed into a Double]
+\end{lstlisting-nobreak}
+
+Method |reifiedType[T]| gives the actual type of type parameter used while instantiating the class and |storageType[T]| gives the storage type used to store the value of miniboxed type parameter. The storage type of a miniboxed type parameter can be one of the following three types:
+\begin{itemize}
+	\item |Object| for instantiations with |AnyRef-based| types, erased generic types and value classes,
+	\item |Long| for instantiations with |Unit|, |Boolean|, |Byte|, |Char|, |Short|, |Int| and |Long|,
+	\item |Double| for instantiations with |Float| and |Double|.
+\end{itemize}
+It is still possible to instantiate the class in an erased context, leading to sub-optimal storage. The Miniboxing plugin returns a warning when this happens, which can be confirmed by reflection as well:
+
+\begin{lstlisting-nobreak}
+scala> def newC[T] = new C[T]
+<console>:11: warning: The following code could benefit from miniboxing
+     specialization if the type parameter T of method newC would be marked
+     as "@miniboxed T" (it would be used to instantiate miniboxed type
+     parameter T of class C)
+            def newC[T] = new C[T]
+                          ^
+     newC: [T]=> C[T]
+
+scala> newC[Int]
+<console>:13: warning: The method newC would benefit from miniboxing
+     type parameter T, since it is instantiated by a primitive type.
+                   newC[Int]
+                       ^
+	res3: C[Int] = C[T = Object, miniboxed into a Object]
+\end{lstlisting-nobreak}
+
+
+Method |isMiniboxed[T]| determines whether the type parameter has been successfully miniboxed or not. A particular use case for this method arises when it is expected that a class is always miniboxed, and an assertion raised if it's not.
+
+\begin{lstlisting-nobreak}
+scala> class D[@miniboxed T] {
+    |   assert(isMiniboxed[T], "Type parameter T of class D is not miniboxed!")
+    | }
+    define class D
+
+scala> new D[String]
+    java.lang.AssertionError: assertion failed: Type parameter T of class D is not miniboxed!
+    at scala.Predef$.assert(Predef.scala:165)
+    ... 34 elided
+\end{lstlisting-nobreak}
+
+
+Methods |reifiedType[T]| and |storageType[T]| are not partially evaluated and do incur a small overhead. However, |isMiniboxed[T]| is partially evaluated away by the compiler and does not incur any addition overhead. Given definition of method |foo|:
+
+\begin{lstlisting-nobreak}
+scala> def foo[@miniboxed T]: Unit = {
+    |   if (isMiniboxed[T])
+    |     println("foo[miniboxed]")
+    |   else
+    |     println("foo[reference]")
+    | }
+	foo: [T]=> Unit
+
+scala> foo[Byte]
+	foo[miniboxed]
+\end{lstlisting-nobreak}
+
+will be translated in the low-level bytecode:
+
+\begin{lstlisting-nobreak}
+def foo(): Unit = println("foo[reference]")
+def foo_J(...): Unit = println("foo[miniboxed]")
+def foo_D(...): Unit = println("foo[miniboxed]")
+\end{lstlisting-nobreak}
+
+which shows how the compiler partially evaluates the code and tries to minimize any run-time overhead.
