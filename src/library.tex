@@ -1,10 +1,8 @@
 \section{Functions and Tuples}
 \label{sec:library}
 
-% Section - library + miniboxing => boxing, how to avoid it, example
 In this section we will show how slow paths occur when miniboxed code interacts with the Scala standard library, which uses either erased generics or the original specialization transformation, which generates 10 variants per type parameter. We show three approaches to avoiding the slow path and show how each of them fits with the library entities.
 
-% The problem
 When interacting with the library from miniboxed code, the programmers are aware functions and tuples are specialized, so they expect to have automatic and flawless performance when using them. However, calling specialized code from miniboxed code and vice-versa is not trivial:
 
 \begin{lstlisting-nobreak}
@@ -61,13 +59,10 @@ Despite the miniboxing annotations, all versions of the |tupleMap| method use th
 
 We now discuss three approaches to eliminating the boxing overhead when calling specialized code from miniboxed classes and/or methods.
 
-% Accessors
 \subsubsection{Accessors.} The simplest answer to the problem of inter-operating with specialization is to switch on the type byte, as shown above. To avoid confusing the Java Virtual Machine inlining heuristics, we can extract the operation into a static method, that we call separately. This approach needs to be implemented both for accessors, allowing the specialized values to be extracted directly into the miniboxed encoding and for constructors, allowing miniboxed code to instantiate specialized classes without boxing. This is the approach taken for |Tuples| (\S\ref{sec:tuples});
 
-% Wrapping objects
 \subsubsection{Wrapping objects.} The accessors approach allows us to pay a small (but non-zero) overhead with each access, which is a good tradeoff when the values accessed are only accessed a couple of times during the lifetime of the object. In other cases, such as functions, the |apply| method is expected to be called many times during the object lifetime, making the overhead of the |apply| method undesirable. In this case, another approach is to introduce a wrapper object, in this case |MiniboxedFunction| which exposes a miniboxed |apply| method and does not need to switch on the type byte in order to call the wrapped function: the switch is done when wrapping the function and is a one-time cost, which then amortizes over many function applications (\S\ref{sec:functions});
 
-% New API
 \subsubsection{New API.} In some cases, the API and guarantees are hardcoded into the compiler. This is the case for the Scala |Array| class, for which the miniboxing plugin chose the Accessors approach \cite{miniboxing}. However, several limitations of Scala arrays can be eliminated by defining a new |MbArray| class. This approach will be discussed in detail in the Arrays subsection (\S\ref{sec:mbarrays}).
 
 The next section discusses three Scala library classes for which the miniboxing plugin uses the approaches above.
@@ -75,21 +70,17 @@ The next section discusses three Scala library classes for which the miniboxing 
 \subsection{Tuples}
 \label{sec:tuples}
 
-% Challenge => custom syntax + automatic desugaring => we want to keep that
 The Scala programming language offers a very concise and pleasant syntax for library tuples, allowing users to write |(3,5)| instead of the desugared |new Tuple2[Int, Int](3,5)|. Similarily, it allows programmers to write |(Int, Int)| instead of |Tuple2[Int, Int]|. If we were to introduce miniboxed tuples, we would not be able to use the syntactic sugar to express programs, losing the support of many programmers. Instead, we're looking into ways to access specialized tuples efficiently, without boxing values.
 
-% acess patterns => a few accesses during the lifetime => accessors
 Although we haven't measured rigorously, our experience suggests that |Tuple| classes are usually created just to have their components accessed a few times during their life. Therefore, both for compatibility reasons and to avoid costly conversions, we decided to allow the |Tuple| class to remain unchanged, instead focusing on providing accessors and constructors to provide compatibility.
-% Results
+
 Our measurements show that we obtain a 2x speedup using the accessors approach and we are within 5\% of the specialized (and monomorphic) code for a larger tuple quicksort benchmark.
 
 \subsection{Functions}
 \label{sec:functions}
 
-% Challenge => automatic desugaring + specialization
 The same syntax challenge applies to functions. In our early experiments on transforming the Scala collections hierarchy using the miniboxing transformation \cite{miniboxing-linkedlist}, we were proposing an alternative |MbFunction| and desugaring by hand. The performance obtained was good, but desugaring by hand was too tedious. Later on, we received a suggestion from the Scala community (thanks to Alex Nedelcu!) stating that, since functions in Scala are specialized, we should be able to interface directly, thus benefiting from the desugaring build into Scala without paying for the boxing overhead.
 
-% Accessors => pay each time
 The first approach was using accessors, but we soon learned that switching on as many as 3 type bytes with each function application incurs a significant overhead. Instead, we decided to fast-path the function application while turning function creation into a slow path. The reasoning was that functions are usually created once but applied many times, so any delay in the creation amortizes over many applications. Indeed, the benchmarks show speedups from 2x to 14x when using miniboxed functions. The key to this is replacing the Scala |FunctionsX| by |MbFunctionX|, where |X|, the function arity, is either 0, 1 or 2 (the functions with greater arity are not specialized, due to the bytecode explosion problem):
 
 \begin{lstlisting-nobreak}
@@ -126,7 +117,6 @@ Let us look at the result of the translation:
  List((1,2), (3,4), (5,6)).map(`function.functionX`)
 \end{lstlisting-nobreak}
 
-% Wrapping objects, coercions and LDL
 What we can see from the translation is that anonymous Scala |Function|s are automatically transformed to |MbFunction|s and that |MbFunction|s have a dual nature: they contain both the miniboxed code for the function and the specialized |Function| equivalent. Therefore, the cost of converting from one function representation to the other is as low as accessing a field (the function object in the |functionX| field also holds a reference to the outer |MbFunction|). This addresses the first two possible slowdowns.
 
 The third overhead is addressed by allowing the object in the |functionX| field to directly call the miniboxed function with very little overhead, by converting from unboxed primitive values to miniboxed values and back, without then need for boxing. This imposes a minimum overhead when a function declared in a miniboxed scope is passed to a library that did not undergo the miniboxing transformation, such as the Scala library (the last line in the example). Therefore, passing functions from miniboxed code back to generic or specialized code is done efficiently.

@@ -1,27 +1,18 @@
 \section{Introduction}
 \label{sec:intro}
 
-% Most optimizations => compromises => heuristics => opaque to programmers => hinders productivity
-
-% Productiviy => high-level abstractions => redundant operations
 Productivity in modern software development is achieved using high-level languages that allow programmers to focus on the requirements and the problem domain. The high-level programs are then compiled to low-level implementations that, when executed, produce the desired result. However, when the input language offers many high-level guarantees, its low-level translation tends to be defensive, producing suboptimal code: for example, in memory-checked languages, accessing an array twice using the same index produces two array bounds checks, even though the second one is clearly redundant, being subsumed by the first check.
 
-% Productivity => optimizations (to close performance gap)
 With programming languages targeting higher and higher abstraction levels, program optimizations are becoming an essential component of compilers. Due to the nature of translating high-level abstractions, the low level code contains redundant operations, which slow down execution. To improve this, optimization passes eliminate or shortcut redundant operations, bridging the performance gap between high-level abstractions and their low-level, tediously hand-coded equivalents.
 
-% Program optimizations are compromises.
 While some optimizations can be guaranteed to produce better results (e.g. eliminating redundant bounds checks), others tend to be compromises. For example, many opportunistic transformations, such as specialization, split the program into two paths: a fast path, where some opportunistic assumptions about the data hold so the program can run faster, and a slow path, which has to execute slower and more general operations. This makes opportunistic transformations a compromise: they can either speed up a section of the program or slow it down, since taking the slow path usually requires additional data transformations.
 
-% Ultimately, heuristics hinder productivity.
 While opportunistic optimizations are a great tool to have in a compiler's toolbox, their opaque nature can make them counter-productive: their heuristics and can easily be invalidated by adding new code or by introducing a new type of data. Therefore, programmers treat these optimizations as black boxes and rely on benchmarks to reverse-engineer when and how the code is optimized. Ultimately, this undoes the benefits of high-level programming, by wasting the time saved using high-level abstractions on benchmarks and guessing how transformations worked.
 
-% Show how an opaque transformation => transparent
 The first part of our paper explains how we offer programmers a window into the inner workings of an opportunistic transformation, namely the miniboxing specialization scheme for generics. Miniboxing offers performance advisories, in the form of compile-time warnings explaining where suboptimal code occurred and how to prevent it. A highlight of our approach is its ability to teach the programmers what they need to do to maximize performance: only based on the advisories, we were able to speed up a program by 4x, without the programmer even knowing how the miniboxing transformation works.
 
-% Another example of slow/fast path => interoperating with foreign objects/APIs (ex: JNI)
 Another example of a slow and fast path separation occurs when inter-operating with foreign objects or external code, which do not have the same data representation and guarantees as the optimized code. For example, when invoking JNI (Java Native Interface) calls in a class, many of the standard Java Virtual Machine (JVM) optimizations are inhibited, since they may interfere with the external code or leave the data in an inconsistent state.
 
-% Miniboxing => API
 In the case of the miniboxing transformation, which transforms the way data is represented, inter-operating with foreign objects forces a slow path, as values need to be converted to the foreign object's desired representation, incurring significant performance losses. Unfortunately, inter-operating with foreign objects cannot be avoided, even more when the foreign objects are objects from the language's standard library, which is compiled with an incompatible data encoding.
 
 The second part of the paper focuses on allowing objects that use incompatible data representations to inter-operate efficiently. In our case, code transformed by miniboxing should be able to inter-operate efficiently with code in the standard library, which uses a different data representation. We look at three objects in the Scala programming language: functions, tuples and arrays, each with its own specific usage pattern that drives a different approach to inter-operating with it. We exhaustively explore the solution space and show the advantages and limitations of each solution, allowing readers who need to deal with different data representations to quickly choose the matching approach for their problems.

@@ -1,22 +1,13 @@
 \section{Avoiding Programmer-induced Slow Paths}
 \label{sec:advisories}
 
-In this section, we show how compile-time performance advisories allow programmers to avoid performance pitfalls and how they can use reflection to expose internal state at run-time. %First, we will present the need for performance advisories and introduce the different types of advisories that exist today. A discussion about the motivation for introducing the MbReflection API will follow, along with examples to demonstrate its functionality.
+In this section, we show how compile-time performance advisories allow programmers to avoid performance pitfalls and how they can use reflection to expose internal state at run-time.
 
 \subsection{Performance Advisories}
 
-%what are the performance advisories and what is their purpose
-% 2 problems:
-%	- programmer not aware of possible optimizations in the code
-%	- programmer not aware of limitations of optimizer
-% Silent failure - using performance advisories this is avoided
-% Shown in form of compile-time warnings
-% Improve code performance up to 5 times
-A fundamentally difficult problem with using miniboxing is determining when the code has reverted to using boxed primitives. Having miniboxed code use boxed primitives is most commonly caused by interacting with erased generics and specialization, but can also be caused by technical or design limitations. While all these cases lead to correct and semantically-equivalent code, they do produce noticeable slowdowns. % These limitations can occur at different levels, from well-understood design decisions that sacrifice certain code patterns, to purely technical limitations where the problem is simply not worth the effort to solve.
+A fundamentally difficult problem with using miniboxing is determining when the code has reverted to using boxed primitives. Having miniboxed code use boxed primitives is most commonly caused by interacting with erased generics and specialization, but can also be caused by technical or design limitations. While all these cases lead to correct and semantically-equivalent code, they do produce noticeable slowdowns.
 
-When boundary conditions or limitations occur in a typical opaque transformation, the optimization process silently fails, and doesn't give the programmer any useful information about what happened. Instead, the miniboxing transformation provides the programmer with a detailed report of the error followed by the common workaround or links to in-depth discussions on the topic. Using this feature, novice programmers can fine-tune their programs without a thorough understanding of the transformation. %This is exactly the function of performance advisories in the Miniboxing plugin. They aim to provide the user with useful compile-time warnings that explain why code could not be fully optimized by specializing generics and detail how the code can be improved in order to achieve the best performance.
-
-% Besides limitations of the optimizer, it is also possible for the code to be written in a manner that does not fully utilize compiler's optimization potential. Performance advisories of Minibox plugin will assist the programmer in this situation by exposing code where the plugin wasn't able to correctly specialize generics, pointing out exactly what the problem was and suggesting ways to fix it. Introduced performance advisories play an important role by helping improve the performance of a program significantly. Benchmarks show that applying the compilers suggested changes can improve overall performance by up to 4x.
+When boundary conditions or limitations occur in a typical opaque transformation, the optimization process silently fails, and doesn't give the programmer any useful information about what happened. Instead, the miniboxing transformation provides the programmer with a detailed report of the error followed by the common workaround or links to in-depth discussions on the topic. Using this feature, novice programmers can fine-tune their programs without a thorough understanding of the transformation.
 
 There are as many as 10 different performance advisories implemented in the miniboxing plugin, but in order to focus on the concept, we will only look at the two most common advisories, both caused by the interaction with erased generics. To show exactly how the slowdowns occur, we can take the following piece of code:
 
@@ -155,9 +146,6 @@ The question asked is whether to transform the call to |foo| into a call to |foo
 As we will see in the benchmarking section (\S\ref{sec:bench}), the performance advisories allow programmers who are not familiar with the transformation to make the changes an expert in the area would do.
 
 \subsection{Data Representation Reflection}
-
-% motivation - define different run time behavior based on class type argument
-%Performance advisories provide the programmer with compile-time warnings when code is sub-optimal, and as mentioned above, there are mechanisms to suppress them. This leads to cases where but still enforce strictness and define a separate run-time behavior for the class if its type argument is a primitive or reference type
 
 This section will show how the miniboxing transformation offers a window into what code is running and how it was transformed. Consider the following two examples:
 

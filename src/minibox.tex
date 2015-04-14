@@ -1,12 +1,10 @@
 \section{The Miniboxing Transformation}
 \label{sec:minibox}
 
-% Summary
 This section describes the miniboxing transformation, showing why it is necessary, how it improves the program performance and how it has an opportunistic nature.
 
 \subsection{Generics in Scala}
 
-% Generics => Different data types & sizes => Erasure => Example
 Generics are crucial to productivity. They allow programmers to design algorithms and data structures that operate identically regardless of the data used, fostering code reuse. For example, a |Vector[T]| can be instantiated for any type, whether for numbers, strings or CPU threads. However, on the low level, data comes in different shapes and sizes: from 1-bit booleans to 64-bit long integers, floating point numbers, characters, value classes \cite{gosling-value-classes,rose-value-classes-tearing,sip-value-classes} and objects. In a |Vector[Int]|, getters and setters receive integer values of 32-bits while in |Vector[Double]| they receive 64-bit double-precision floating-point numbers.
 
 The current compilation scheme for generics is called erasure, and is the simplest compilation scheme possible for generics. Erasure requires all data, regardless of its type, to be passed in by reference, pointing to a heap object. Let us take a simple example, a generic |identity| method written in Scala:
@@ -28,7 +26,6 @@ As the name suggests, the type parameter |T| was ``erased'' from the method, lea
  val five = identity(`Integer.valueOf(5)`).`intValue()`
 \end{lstlisting-nobreak}
 
-% Naive approach => specialization => Example
 Boxing primitive types requires heap allocation and garbage collection, both of which slow down program performance. Furthermore, when values are stored in generic classes, such as |Vector[T]|, they need to be stored in the boxed format, thus inflating the heap memory requirements and slowing down execution. In practice, generic methods can be as much as 10 times slower than their monomorphic (primitive) instantiations. This gave rise to a simple and effective idea: specialization.
 
 \subsection{Specialization}
@@ -55,13 +52,11 @@ Having multiple methods, also called specialized variants or simply specializati
  val five: int = identity`_I`(5)
 \end{lstlisting-nobreak}
 
-% Used in Scala => limited by Duplication
 This transformation side-steps the need for a heap object allocation, improving the program performance.
 However, specialization is not without limitations. As we have seen, it creates 10 versions of the method for each type parameter. But what if a method has 2 type parameters? It creates 100 versions, and in general, for $N$ specialized type parameters, it creates $10^N$ specialized variants, the cartesian product covering all combinations. This prevents the Scala library from using specialization extensively, since common classes have between one and three type parameters. This led to the next development, the miniboxing transformation.
 
 \subsection{Miniboxing}
 
-% Miniboxing encoding => Example
 Taking a low level perspective, we can observe the fact that all primitive types in the Scala programming language fit within 64 bits. This is the main idea that motivated the miniboxing transformation: instead of creating separate versions of the code for each primitive type alone, we can create a single one, which stores 64-bit encoded values, much like a tagged union \cite{tagged-unions-lua}. But unlike a tagged union, miniboxing can use the statically typed nature of the language to avoid carrying tags with each value. Looking at the previous example:
 
 \begin{lstlisting-nobreak}
@@ -77,15 +72,12 @@ Since the type parameter is annotated with |@miniboxed|, the compiler\footnote{I
  val five: int= `minibox2int`(identity`_M`(`int2minibox`(5)))
 \end{lstlisting-nobreak}
 
-% Cost of miniboxing
 Alert readers will notice the |minibox2int| and |int2minibox| transformations act exactly like the boxing coercions in the case of  erased generics. This is true, the values are being coerced to the miniboxed representation, much like in the case of erasure, but on the Java Virtual Machine platform our benchmarks have shown that the miniboxing conversion cost is completely eliminated when compiling the code to native x86 assembly. Further benchmarking has shown that the code matches the performance of specialized code within a 10\% slowdown due to coercions \cite{miniboxing}.
 
-% Ellipsis => Type tags + send to the papers
 There is an elipsis in the definition of the |identity_M| method, which stands for what we call a type byte: a byte describing the type encoded in the long integer, allowing the operations such as |toString|, |hashCode| or |equals| to be executed correctly on encoded values, treating them as the original primitive (corresponding to |T|) rather than long integers. Although the transformation looks simple, there are many subtleties we have to take into account when transforming the code \cite{miniboxing,miniboxing-linkedlist,ldl}.
 
 \subsection{Class Transformation}
 
-% Object encoding => Example
 One of the most subtle aspects of the miniboxing transformation is how it transforms classes: it has to preserve the inheritance relation while providing specialized variants of the class, where fields are encoded as miniboxed long integers instead of |Object|s. To show the example, let us take a simple linked list node class:
 
 \begin{lstlisting-nobreak}
@@ -101,7 +93,6 @@ A simple desugaring for class |Node| is (some details omitted):
  }
 \end{lstlisting-nobreak}
 
-% Method and accessor variants
 There are three subtleties in the |Node| translation:
 \begin{compactitem}
   \item First, there should be two versions of the class: one where the |head| is a long integer and one where it is an |Object|;
