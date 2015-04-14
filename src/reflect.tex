@@ -124,131 +124,72 @@ The question asked is whether to transform the call to |foo| into a call to |foo
  val five: int = minibox2int(foo`_J`(int2minibox(5)))
 \end{lstlisting-nobreak}
 
-\subsection{Suppressing warnings.} In certain scenarios, programmers are aware of their sub-optimal erased generic code but, due to compatibility requirements with other JVM programs or due to technical limitations, they chose not to change it. In these situations, they need to suppress the warnings, since instead of improving visibility, they prevent a clear picture of the sub-optimalities in the program. However, a coarse-grained approach such as turning off all warnings is not desirable either, since it hides other potentially valuable pieces of information. For this scenario, the miniboxing transformation provides the |@generic| annotation, which can suppress both forward and backward warnings:
+\subsubsection{Suppressing warnings.} In certain scenarios, programmers are aware of their sub-optimal erased generic code but, due to compatibility requirements with other JVM programs or due to technical limitations, they chose not to change it. In these situations, they need to suppress the warnings, since instead of improving visibility, they prevent a clear picture of the sub-optimalities in the program. However, a coarse-grained approach such as turning off all warnings is not desirable either, since it hides other potentially valuable pieces of information. For this scenario, the miniboxing transformation provides the |@generic| annotation, which can suppress both forward and backward warnings:
 
 \begin{lstlisting-nobreak}
-scala> def zoo[`@miniboxed` T](t: T) = t
-defined method zoo
+ scala> def zoo[`@miniboxed` T](t: T) = t
+ defined method zoo
 
-scala> zoo[Any `@generic`](3) // no forward warning
-res1: Any = 3
+ scala> zoo[Any `@generic`](3) // no forward warning
+ res1: Any = 3
 
-scala> def boo[`@generic` T](t: T) = t
-defined method boo
+ scala> def boo[`@generic` T](t: T) = t
+ defined method boo
 
-scala> boo[Int](3)                   // no backward warning
-res2: Int = 3
+ scala> boo[Int](3)                   // no backward warning
+ res2: Int = 3
 \end{lstlisting-nobreak}
 
 
 \subsubsection{Libraries.} In other cases boxing is caused by the interaction with erased generics from libraries. In this case, the default decision is not to warn, unless the programmer specifically sets the |-P:minibox:warn-all| compiler flag:
 
 \begin{lstlisting-nobreak}
-scala> 3 :: Nil
-<console>:8: warning: The method scala.collection.immutable.List.:: would benefit from miniboxing type parameter B, since it is instantiated by a primitive type:
+ scala> 3 :: Nil
+ <console>:8: warning: The method List.:: would benefit from miniboxing type parameter B, since it is instantiated by a primitive type:
 
-              3 :: Nil
-                ^
-res0: List[Int] = List(3)
+               3 :: Nil
+                 ^
+ res0: List[Int] = List(3)
 \end{lstlisting-nobreak}
 
+As we will see in the benchmarking section (\S\ref{sec:bench}), the performance advisories allow programmers who are not familiar with the transformation to make the changes an expert in the area would do.
 
-
-\subsection{Exposing internal state - MbReflection}
+\subsection{Exposing Internal State}
 
 % motivation - define different run time behavior based on class type argument
-Performance advisories provide the user with compile-time warnings when code is sub-optimal, and as mentioned above, there is a mechanism to suppress them. However, it is possible that a user want to silence the warnings but still enforce strictness and define a separate run-time behavior for the class if its type argument is a primitive or reference type. Consider the following example: In the immutable |RRB-Vector| implementation, when elements from the front or back are removed, underlying arrays that store elements can be reused. Here, only starting and stopping indices of the resultant immutable vector are updated. However, if |Vector| is used to store references, reusing previous arrays can result in memory leaks (since the arrays keep a reference to the deleted object for the old vector, but create a reference path between the new vector and the deleted element). In this case, the ideal solution would be to change the behavior of the |Vector| class based on the type argument and only reuse the arrays for primitive types.
+%Performance advisories provide the programmer with compile-time warnings when code is sub-optimal, and as mentioned above, there are mechanisms to suppress them. This leads to cases where but still enforce strictness and define a separate run-time behavior for the class if its type argument is a primitive or reference type
 
+This section will show how the miniboxing transformation offers a window into what code is running and how it was transformed. Consider the following two examples:
 
-% motivation - if code is expected to be optimized but for some reason, optimization fails and there is no warning about that, define the behavior in that case
-Various limitations can prevent the code from being fully optimized, and the Minibox plugin will try to recognize these and alert the user appropriately. However, it is possible that some unknown limitations exist and, in that case, code optimization can fail silently. To guard against this situation, run-time checks can be conducted to determine if the code has been optimized and define custom behavior to handle the situation.
-
+\begin{compactitem}
+\item Having shut off some of the performance advisories, a programmer may still want to guarantee a class is only instantiated in its specialized form using reflection;
+\item When designing a container, the actions may depend on the types of elements stored: In the immutable |RRB-Vector| \cite{nicolas-thesis} implementation, when elements from the front or back are removed, underlying arrays that store elements can be reused. Here, only starting and stopping indices of the resultant immutable vector are updated. However, if |Vector| is used to store references, reusing previous arrays can result in memory leaks (since the arrays keep a reference to the deleted object for the old vector, but create a reference path between the new vector and the deleted element). In this case, the ideal solution would be to change the behavior of the |Vector| class based on the type argument and only reuse the arrays for primitive types.
+\end{compactitem}
 
 % what is mbreflection
-|MbReflection| exposes internal state by allowing reflecting on the type parameters of miniboxed classes. For example, given |class C[@miniboxed T]|, reflection can determine, at run-time, whether a type parameter is miniboxed, its instantiation, and the type used to store the value. By exposing internal state, |MbReflection| can help in solving the problems mentioned above. Usage is illustrated 	on the following examples:
-\begin{lstlisting-nobreak}
-scala> import MiniboxingReflection._
-	import MiniboxingReflection._
-
-scala> class C[@miniboxed T] {
-    |   override def toString: String =
-    |     s"C[T =${reifiedType[T]}, miniboxed into a ${storageType[T]}]"
-    | }
-	defined class C
-
-scala> new C[Int]
-	res4: C[Int] = C[T = Int, miniboxed into a Long]
-
-scala> new C[Unit]
-	res5: C[Unit] = C[T = Unit, miniboxed into a Long]
-
-scala> new C[Float]
-	res6: C[Float] = C[T = Float, miniboxed into a Double]
-\end{lstlisting-nobreak}
-
-Method |reifiedType[T]| gives the actual type of type parameter used while instantiating the class and |storageType[T]| gives the storage type used to store the value of miniboxed type parameter. The storage type of a miniboxed type parameter can be one of the following three types:
-\begin{itemize}
-	\item |Object| for instantiations with |AnyRef-based| types, erased generic types and value classes,
-	\item |Long| for instantiations with |Unit|, |Boolean|, |Byte|, |Char|, |Short|, |Int| and |Long|,
-	\item |Double| for instantiations with |Float| and |Double|.
-\end{itemize}
-It is still possible to instantiate the class in an erased context, leading to sub-optimal storage. The Miniboxing plugin returns a warning when this happens, which can be confirmed by reflection as well:
+The |MbReflection| object allows the programmer to check the internal state of the plugin by reflecting on the type parameters of miniboxed classes and methods. For example, given a method with a miniboxed type parameter |T|, reflection can determine, at run-time, whether |T| is miniboxed, its instantiation, and the type used to store the value:
 
 \begin{lstlisting-nobreak}
-scala> def newC[T] = new C[T]
-<console>:11: warning: The following code could benefit from miniboxing
-     specialization if the type parameter T of method newC would be marked
-     as "@miniboxed T" (it would be used to instantiate miniboxed type
-     parameter T of class C)
-            def newC[T] = new C[T]
-                          ^
-     newC: [T]=> C[T]
+ scala> import MiniboxingReflection._
+ import MiniboxingReflection._
 
-scala> newC[Int]
-<console>:13: warning: The method newC would benefit from miniboxing
-     type parameter T, since it is instantiated by a primitive type.
-                   newC[Int]
-                       ^
-	res3: C[Int] = C[T = Object, miniboxed into a Object]
+ scala> def bip[@miniboxed T] = s"bip[T = ${`reifiedType[T]`}, miniboxed into a ${`storageType[T]`}]"
+ defined method bip
+
+ scala> bip[Int]
+ res4: String = bip[T = Int, miniboxed into a Long]
 \end{lstlisting-nobreak}
 
-
-Method |isMiniboxed[T]| determines whether the type parameter has been successfully miniboxed or not. A particular use case for this method arises when it is expected that a class is always miniboxed, and an assertion raised if it's not.
+The method |reifiedType[T]| indicates the type of type parameter instantiation while the |storageType[T]| returns the type used for encoding data. It is also possible to call the method from an erased context, in which case it will report the fact that the type parameter is a reference to a boxed object:
 
 \begin{lstlisting-nobreak}
-scala> class D[@miniboxed T] {
-    |   assert(isMiniboxed[T], "Type parameter T of class D is not miniboxed!")
-    | }
-    define class D
+ scala> def bop[T] = bip[T]
+ // backward warning...
+ defined method bop
 
-scala> new D[String]
-    java.lang.AssertionError: assertion failed: Type parameter T of class D is not miniboxed!
-    at scala.Predef$.assert(Predef.scala:165)
-    ... 34 elided
+ scala> bop[Int]
+ // forward warning...
+ res5: String = bip[T = Reference, miniboxed into a Reference]
 \end{lstlisting-nobreak}
 
-
-Methods |reifiedType[T]| and |storageType[T]| are not partially evaluated and do incur a small overhead. However, |isMiniboxed[T]| is partially evaluated away by the compiler and does not incur any addition overhead. Given definition of method |foo|:
-
-\begin{lstlisting-nobreak}
-scala> def foo[@miniboxed T]: Unit = {
-    |   if (isMiniboxed[T])
-    |     println("foo[miniboxed]")
-    |   else
-    |     println("foo[reference]")
-    | }
-	foo: [T]=> Unit
-
-scala> foo[Byte]
-	foo[miniboxed]
-\end{lstlisting-nobreak}
-
-will be translated in the low-level bytecode:
-
-\begin{lstlisting-nobreak}
-def foo(): Unit = println("foo[reference]")
-def foo_J(...): Unit = println("foo[miniboxed]")
-def foo_D(...): Unit = println("foo[miniboxed]")
-\end{lstlisting-nobreak}
-
-which shows how the compiler partially evaluates the code and tries to minimize any run-time overhead.
+From an implementation point of view, the reflection methods are simply bridged after duplication to either constant values (in the case of the |_L| variants of the classes and methods) or to the type byte mentioned in \S\ref{sec:minibox}, for the |_J| variants. This is a simple mechanism which offers programmers yet another way to avoid slow paths in their programs.  Other reflection features include the partial evaluation of reflection method calls when the result is statically known and optimized conversion methods that allow converting values to and from the miniboxed representation efficiently. Instead of presenting these features in detail, we will now focus on the inter-operation between miniboxing and specialized library classes, which exposes a completely different type of slow path.
