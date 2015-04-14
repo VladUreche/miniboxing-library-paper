@@ -140,7 +140,6 @@ Therefore, the approach can only be used in scenarios where it is guaranteed to 
 
 
 \subsubsection{Specialized arrays.}
-
 Scala offers another feature, specialization, which can help enhancing performances of generic code under certain circumstances. When specializing the type parameter of a function, different variant of this function are generated, each of them being optimized for a specific instance of the type parameter. Hence, generic array accesses that occur in the specialized declinations of a function can benefit from optimizations. For example, we can specialize the type parameter of our function |first| for |Int|:
 
 % If the code is specialized, array access is automatically optimized:
@@ -193,29 +192,26 @@ Inside |foo|, |T| is erased. Consequently, the compiler will have no choice but 
 
 So far, we have seen three ways from which to tackle the issue:
 
-\begin{enumerate}
+\begin{itemize}
   \item The |ClassTag| approach.
-    \begin{description}
-      \item[Advantage] 	Solves the array instantiation problem.
-      \item[Disadvantage] Has to carry |ClassTag| objects.
-    \end{description}
+    \begin{compactitem}
+      \item \textem{Advantage:} Solves the array instantiation problem;
+      \item \textem{Disadvantage:} Has to carry |ClassTag| objects;
+    \end{compactitem}
   \item The invariant approach.
-    \begin{description}
-      \item[Advantage] 	Solves the array instantiation problem.
-      \item[Disadvantage] Requires boxing primitives
-      \item[Disadvantage] Array must not escape.
-    \end{description}
+    \begin{compactitem}
+      \item \textem{Advantage:} Solves the array instantiation problem;
+      \item \textem{Disadvantages:} Requires boxing primitives and arrays must not escape;
+    \end{compactitem}
   \item The specialization approach.
-    \begin{description}
-      \item[Advantage] 	Optimizes array accesses.
-      \item[Disadvantage] Does not solve the generic array instantiation problem.
-    \end{description}
-\end{enumerate}
-
-\subsubsection{Miniboxed arrays.}
+    \begin{compactitem}
+      \item \textem{Advantage:}	Optimizes array accesses;
+      \item \textem{Disadvantage:} Does not solve the generic array instantiation problem.
+    \end{compactitem}
+\end{itemize}
 
 % a natural question: can we combine the three approaches before to get something working?
-
+\subsubsection{Miniboxed arrays.}
 Would it be possible to combine the three approaches seen so far to get something working? In this subsection we present how |MbArray| achieves this synthesis, keeping the main advantages of each approach and dropping their disadvantages.
 
 % enter MbArray:
