@@ -7,6 +7,30 @@ In the benchmarks section, we show four different scenarios where miniboxing has
 
 \subsubsection{Performance advisories} can be used to improve the performance of Scala programs without any previous knowledge of how the transformation works. This was shown at the PNWScala 2014 software development conference \cite{pnwscala-conf}, where Vlad Ureche presented how the miniboxing plugin guides the programmer into improving the performance of a mock-up of a image processing library by as much as 4x \cite{pnwscala-pureimage}. The presentation was recorded and the performance numbers are included in Table \ref{table:pureimage} for reference.
 
+\subsubsection{RRB-Vector} \cite{rrb-vector-paper} \cite{nicolas-thesis} is an implementation of the Scala immutable |Vector| collection using Relaxed Radix Balanced trees with good performance across a broad range of sequential and parallel operations. The current immutable |Vector| implementation of the Scala Collections is a wrapper around immutable tree. The reason why the underlying structure used for |RRB-Vector| is Relaxed-Radix-Balanced (RRB) tree is that this structure allows efficient structural changes and an optimization that exploits spatio-temporal locality on the RRB data structure in order to offset the cost of navigating from the tree root to the leaves. Benchmarks \cite{rrb-vector-paper} show that |RRB-Vector| speedup for parallel operations is lower bounded by 2.33x when executing on 4 cores when compared to the current |Vector| implementation of the Scala Collections. For almost all other operations of |RRB-Vector|, the performance achieved was almost identical to standard |Vector| implementation. The details how |RRB-Vector| is implemented can be found in \cite{rrb-vector-paper} and \cite{nicolas-thesis}. 
+
+Implementation of |RRB-Vector| uses erased generics as a translation for generics and in this benchmark we will show how by following the performance advisories given by compiler we can change it to miniboxing translation and improve performance of its operations. Compiling the implementation of |RRB-Vector|, where only parts of the code needed for operations used in benchmarks are kept \cite{rrb-vector-miniboxed-impl}, with the Miniboxing plugin gives to the user 28 distinct warnings. Warnings advice user where to add |@miniboxed| annotation and where to use |MbArray| instead of |Array| so the implementation can benefit from miniboxing transformation. By following the suggested advices given by compiler, in 3 steps and less than 30 minutes of work, programmer who is not the author of |RRB-Vector| and familiar with the code, managed to improve the performances of some |RRB-Vector| operations by 50\%. 
+
+Operations used for benchmarking the miniboxed and generic variants of |RRB-Vector| implementation are creating the |RRB-Vector| using |RRBVectorBuilder| and invoking |map|, |fold| and |reverse| operations on |RRB-Vector|. ScalaMeter framework \cite{scalameter} is used as a benchmark platform and the measurements are conducted using JDK 1.7 on the machine with processor Intel Core i7-4600U CPU @ 2.10GHz x 4 and with RAM of 12GiB. Results of the benchmark are included in Table \ref{table:rrbvector}. 
+
+The numbers show that for |builder|, |map| and |fold| tests there is a speedup of 2x when miniboxing transformation is used which is expected as both boxing and unboxing of the value parameters are present there. On the other hand, |reverse| operation does not require any boxing and therefore there is no any speedup achieved, but numbers show that miniboxing does not introduce any noticeable slowdowns as well. To conclude, by listening to advises given by miniboxing plugin, the user who does not have any familiarity with the code, for relatively short period of time (if we consider the time needed for development of the |RRB-Vector| which was approximately 4 months and that implementation has \textasciitilde3K LOC) can improve the performance of the operations by 50\%.
+
+\begin{table}[t]
+  \centering
+  \begin{tabularx}{0.48\textwidth}{|g *{3}{|Y}|} \hline
+    \rowcolor{Gray}
+    \textbf{Benchmark} & \textbf{Generic}      & \textbf{Miniboxed} \\  \hline
+    Builder (5M)       &        247.51 s       &          104.87 s  \\
+    Map (5M)           &        108.83 s       &           54.25 s  \\
+    Fold (5M)          &          85.4 s       &           48.14 s  \\
+    Reverse (1M)       &          6.18 s       &            9.33 s  \\  \hline
+  \end{tabularx}
+  \vspace{-2mm}
+  \caption{RRB-Vector operations.}
+  \label{table:pureimage}
+  \vspace{-1em}
+\end{table}
+
 
 \begin{table}[t]
   \begin{tabularx}{0.48\textwidth}{|g *{3}{|Y}|} \hline
