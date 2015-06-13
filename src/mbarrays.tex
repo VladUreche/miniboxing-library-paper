@@ -205,11 +205,11 @@ With this approach, the following code:
  def first(a: MbArray[Int]): Int = a(0)
 \end{lstlisting-nobreak}
 
-Is translated to:
+Is translated, after erasure, to:
 
 \begin{lstlisting-nobreak}
  def first(a: MbArray): Int =
-   minibox2ing(mbArray_apply_J(a, 0))
+   minibox2int(mbArray_apply_J(a, 0))
 \end{lstlisting-nobreak}
 
 Where the |mbArray_apply| method contains the optimistic assumption that the |MbArray| is going to contain the miniboxed version of the |MbArray| class, containing an underlying array of long integers:

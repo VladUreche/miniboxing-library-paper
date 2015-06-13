@@ -1,26 +1,123 @@
 \section{Introduction}
 \label{sec:intro}
 
-Productivity in modern software development is achieved using high-level languages that allow programmers to focus on the requirements and the problem domain. The high-level programs are then compiled to low-level implementations that, when executed, produce the desired result. However, when the input language offers many high-level guarantees, its low-level translation tends to be defensive, producing suboptimal code: for example, in memory-checked languages, accessing an array twice using the same index produces two array bounds checks, even though the second one is clearly redundant, being subsumed by the first check.
+% Generics - erasure vs specialization
+Generics on the Java platform are compiled using the erasure transformation \cite{java-erasure}, which allows them to be fully backward compatible with pre-generics bytecode. Unfortunately, on the long run, this choice sacrificed performance, as Java primitive types have to be transformed into heap objects when interacting with generics. This conversion, known as boxing, compromises the execution performance and heap footprint, forcing Java to lag behind lower-level languages such as C or C++.
+% Full discussion: ersure merits, allowing JVM languages to ``erase'' to JVM bytecode
 
-With programming languages targeting higher and higher abstraction levels, program optimizations are becoming an essential component of compilers. Due to the nature of translating high-level abstractions, the low level code contains redundant operations, which slow down execution. To improve this, optimization passes eliminate or shortcut redundant operations, bridging the performance gap between high-level abstractions and their low-level, tediously hand-coded equivalents.
+% Project Valhalla - exploring specialization on the JVM
+The performance drawbacks of erasure are currently being addressed in Project Valhalla \cite{goetz-specialization, rose-value-classes-tearing, rose-value-classes-vm}, an important undertaking led by the Java platform architects and aimed at providing unboxed generics for Java and other JVM languages. According to Project Valhalla, the updated bytecode format will include the necessary type information to allow load-time class specialization, effectively creating different versions of classes that directly support primitive types. This load-time transformation approach is also employed by the .NET framework \cite{dot-net-generics, dot-net-generics-form} in order to implement generics.
 
-While some optimizations can be guaranteed to produce better results (e.g. eliminating redundant bounds checks), others tend to be compromises. For example, many opportunistic transformations, such as specialization, split the program into two paths: a fast path, where some opportunistic assumptions about the data hold so the program can run faster, and a slow path, which has to execute slower and more general operations. This makes opportunistic transformations a compromise: they can either speed up a section of the program or slow it down, since taking the slow path usually requires additional data transformations.
 
-While opportunistic optimizations are a great tool to have in a compiler's toolbox, their opaque nature can make them counter-productive: their heuristics and can easily be invalidated by adding new code or by introducing a new type of data. Therefore, programmers treat these optimizations as black boxes and rely on benchmarks to reverse-engineer when and how the code is optimized. Ultimately, this undoes the benefits of high-level programming, by wasting the time saved using high-level abstractions on benchmarks and guessing how transformations worked.
+% The current approach is restrictive in that it segregates different specialization translations:
+%  - erased code cannot call specialized variants of the code
+%  - there is no way to abstract across different specializations
+Unlike .NET generics, which are always specialized, the current design of Project Valhalla, as of June 2015, states an explicit goal to make specialization an opt-in transformation. This would allow the ecosystem to evolve smoothly from erased to specialized generics, allowing both erased and specialized classes to co-habit together. However, there are two important limitations in the interaction between erased and specialized generics: (1) erased code cannot handle specialized instances in a generic manner and (2) abstraction over specialized classes is prohibited. This is shown in the following example:
 
-The first part of our paper explains how we offer programmers a window into the inner workings of an opportunistic transformation, namely the miniboxing specialization scheme for generics. Miniboxing offers performance advisories, in the form of compile-time warnings explaining where suboptimal code occurred and how to prevent it. A highlight of our approach is its ability to teach the programmers what they need to do to maximize performance: only based on the advisories, we were able to speed up a program by 4x, without the programmer even knowing how the miniboxing transformation works.
+\begin{lstlisting-nobreak}
+// class Spec, is specialized by virtue of its type
+// parameter T being annotated with "any":
+public class Spec<`any` T> {
+  String getString() { ... }
+}
 
-Another example of a slow and fast path separation occurs when inter-operating with foreign objects or external code, which do not have the same data representation and guarantees as the optimized code. For example, when invoking JNI (Java Native Interface) calls in a class, many of the standard Java Virtual Machine (JVM) optimizations are inhibited, since they may interfere with the external code or leave the data in an inconsistent state.
+// method getSpecString, remains erased as its type
+// parameter U is not marked for specialization:
+static <U> void getSpecString(Spec<U> spec) {
+  return spec.getString();
+}
 
-In the case of the miniboxing transformation, which transforms the way data is represented, inter-operating with foreign objects forces a slow path, as values need to be converted to the foreign object's desired representation, incurring significant performance losses. Unfortunately, inter-operating with foreign objects cannot be avoided, even more when the foreign objects are objects from the language's standard library, which is compiled with an incompatible data encoding.
+// The following patterns are not allowed:
+//  - erased code handling a specialized class:
+getSpecString(`new Spec<int>()`);
+//  - abstracting over a specialized class:
+Spec<?> spec = `new Spec<int>()`;
+\end{lstlisting-nobreak}
 
-The second part of the paper focuses on allowing objects that use incompatible data representations to inter-operate efficiently. In our case, code transformed by miniboxing should be able to inter-operate efficiently with code in the standard library, which uses a different data representation. We look at three objects in the Scala programming language: functions, tuples and arrays, each with its own specific usage pattern that drives a different approach to inter-operating with it. We exhaustively explore the solution space and show the advantages and limitations of each solution, allowing readers who need to deal with different data representations to quickly choose the matching approach for their problems.
+There are good reasons to disallow these patterns, as they can silently introduce performance regressions, but such decisions add to the complexity of the language and have already been opposed by the community \cite{king-valhalla-email}.
 
-The paper makes two contributions on avoiding slow paths:
+The Scala programming language, which also compiles to JVM bytecode, has had compile-time specialization for 7 years \cite{iuli-thesis, specialization-iuli} and currently has three mechanisms for compiling generics: erasure, specialization and a new arrival, miniboxing \cite{miniboxing}. All three mechanisms collaborate and can be freely mixed in the Scala code:
+
+\begin{lstlisting-nobreak}
+// class Mbox is miniboxed by virtue of the type
+// paramtere annotation (but could be specialized
+// as well, using @specialized):
+class Mbox[`@miniboxed` T] {
+  def getString(): String = ...
+}
+
+// method getMboxString is erased:
+def getMboxString[U](mbox: Mbox[U]) = mbox.getString()
+
+// The following code patterns are both allowed:
+//  - erased code handling a miniboxed class:
+getMboxString(new Mbox<Int>())
+//  - abstracting over a miniboxed or specialized class:
+val c: C[_] = new
+\end{lstlisting-nobreak}
+
+Despite the fact that it works, Scala does pay a hefty price for being able to freely mix code using the three generics compilation schemes: calls between different compilation schemes require boxing primitive values. The reason is that boxed primitive values are understood by all three transformations. Furthermore, as we will see later in the paper, instantiating miniboxed (or specialized) classes from erased code leads to the erased versions of the classes being instantiated instead of their miniboxed (or specialized) variants, leading to unexpected performance regressions. We assume this was one of the reasons for which the Project Valhalla architects dismissed the possibility that erased and specialized generics would work together.
+
+In this paper, we show how we completely eliminate unexpected slowdowns in the miniboxing transformation and, as a side effect, allow programmers to easily and robustly use miniboxing to speed up their programs. The underlying property we are after is that, inside hot loops and performance-aware parts of the program, all generic code uses the same compilation scheme, in this case, miniboxing. This way, primitive types always use the same representation, whether that's the miniboxed encoding (for miniboxing) or the unboxed representation (for specialization).
+
+We show two approaches to harmonizing the compilation scheme across the code:
+
+\textbf{Issuing actionable performance advisories} when compilation schemes do not match, allowing the programmer to harmonize them. For example, when a generic method takes a miniboxed class as a parameter, we are automatically generating a performance advisory:
+
+\begin{lstlisting-nobreak}
+scala> def getMboxString[U](mbox: Mbox[U]) =
+     |   mbox.getString()
+<console>:9: warning: The following code could benefit
+from miniboxing if the type parameter U of method
+getMboxString would be marked as "@miniboxed U":
+         mbox.getString()
+         ^
+\end{lstlisting-nobreak}
+
+Another problem that occurs is related to library evolution: as a new compilation schemes arrives, it is best if all libraries start using it as soon as possible. However, backward compatibility prohibits changing the compilation scheme for the standard library, as old bytecode would no longer be able to use it. In Scala, we had this problem as many of the core language constructs, such as functions and tuples use specialization instead of miniboxing. Similarly, Java has as many as 20 manual specializations for the arity 1 lambda, such as |IntConsumer|, |IntPredicate| and so on. Replacing these by a single specialized functional interface would be desirable, but is realistically impossible. However, there is a solution to this.
+
+\textbf{Offering equivalents of the standard library classes} for the new compilation scheme. In the case of miniboxing, which is a compiler plugin, we were not able to change the standard library functions or tuples to the miniboxing compilation scheme. However, we describe a number of approaches that can solve the problem, both manual and automatic.
+
+With this, the paper is making four key contributions to the Java community and, in the general sense, to the field of compiling object-oriented languages with generics:
+
 \begin{compactitem}
-  \item by instructing the programmer on where code will take the slow path and how this can be avoided (\S\ref{sec:advisories});
-  \item by offering fast-path communication between objects with otherwise different data representations (\S\ref{sec:library}).
+  \item Describing the problems involved in mixing different generics compilation schemes (\S\ref{sec:minibox});
+  \item Describing a general mechanism for harmonizing the compilation scheme (\S\ref{sec:advisories});
+  \item Describing four approaches we used for offering fast-path communication between objects that use different generic compilation schemes (\S\ref{sec:library});
+  \item Validating the approach we took using the miniboxing plugin (\S\ref{sec:bench}).
 \end{compactitem}
 
-We benchmark our approaches and show as many as four very different scenarios where we obtained speedups between 1.5 and 14x by avoiding slow paths in the miniboxing transformation.
+
+
+
+
+
+
+
+
+
+
+
+% Productivity in modern software development is achieved using high-level languages that allow programmers to focus on the requirements and the problem domain. The high-level programs are then compiled to low-level implementations that, when executed, produce the desired result. However, when the input language offers many high-level guarantees, its low-level translation tends to be defensive, producing suboptimal code: for example, in memory-checked languages, accessing an array twice using the same index produces two array bounds checks, even though the second one is clearly redundant, being subsumed by the first check.
+%
+% With programming languages targeting higher and higher abstraction levels, program optimizations are becoming an essential component of compilers. Due to the nature of translating high-level abstractions, the low level code contains redundant operations, which slow down execution. To improve this, optimization passes eliminate or shortcut redundant operations, bridging the performance gap between high-level abstractions and their low-level, tediously hand-coded equivalents.
+%
+% While some optimizations can be guaranteed to produce better results (e.g. eliminating redundant bounds checks), others tend to be compromises. For example, many opportunistic transformations, such as specialization, split the program into two paths: a fast path, where some opportunistic assumptions about the data hold so the program can run faster, and a slow path, which has to execute slower and more general operations. This makes opportunistic transformations a compromise: they can either speed up a section of the program or slow it down, since taking the slow path usually requires additional data transformations.
+%
+% While opportunistic optimizations are a great tool to have in a compiler's toolbox, their opaque nature can make them counter-productive: their heuristics and can easily be invalidated by adding new code or by introducing a new type of data. Therefore, programmers treat these optimizations as black boxes and rely on benchmarks to reverse-engineer when and how the code is optimized. Ultimately, this undoes the benefits of high-level programming, by wasting the time saved using high-level abstractions on benchmarks and guessing how transformations worked.
+%
+% The first part of our paper explains how we offer programmers a window into the inner workings of an opportunistic transformation, namely the miniboxing specialization scheme for generics. Miniboxing offers performance advisories, in the form of compile-time warnings explaining where suboptimal code occurred and how to prevent it. A highlight of our approach is its ability to teach the programmers what they need to do to maximize performance: only based on the advisories, we were able to speed up a program by 4x, without the programmer even knowing how the miniboxing transformation works.
+%
+% Another example of a slow and fast path separation occurs when inter-operating with foreign objects or external code, which do not have the same data representation and guarantees as the optimized code. For example, when invoking JNI (Java Native Interface) calls in a class, many of the standard Java Virtual Machine (JVM) optimizations are inhibited, since they may interfere with the external code or leave the data in an inconsistent state.
+%
+% In the case of the miniboxing transformation, which transforms the way data is represented, inter-operating with foreign objects forces a slow path, as values need to be converted to the foreign object's desired representation, incurring significant performance losses. Unfortunately, inter-operating with foreign objects cannot be avoided, even more when the foreign objects are objects from the language's standard library, which is compiled with an incompatible data encoding.
+%
+% The second part of the paper focuses on allowing objects that use incompatible data representations to inter-operate efficiently. In our case, code transformed by miniboxing should be able to inter-operate efficiently with code in the standard library, which uses a different data representation. We look at three objects in the Scala programming language: functions, tuples and arrays, each with its own specific usage pattern that drives a different approach to inter-operating with it. We exhaustively explore the solution space and show the advantages and limitations of each solution, allowing readers who need to deal with different data representations to quickly choose the matching approach for their problems.
+%
+% The paper makes two contributions on avoiding slow paths:
+% \begin{compactitem}
+%   \item by instructing the programmer on where code will take the slow path and how this can be avoided (\S\ref{sec:advisories});
+%   \item by offering fast-path communication between objects with otherwise different data representations (\S\ref{sec:library}).
+% \end{compactitem}
+%
+% We benchmark our approaches and show as many as four very different scenarios where we obtained speedups between 1.5 and 14x by avoiding slow paths in the miniboxing transformation.
