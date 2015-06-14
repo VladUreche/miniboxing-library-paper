@@ -1,12 +1,17 @@
 \begin{abstract}
 
-Some compiler optimizations always produce better performance while others have an opportunistic nature, producing two or more versions of the code, each with different requirements and execution characteristics. For example, in dynamic languages such as JavaScript, assuming a value will always be an integer allows a fast path to execute ten times faster than the no-assumption slow path, which uses the object representation for its values.
+Generics on the Java platform are compiled using the erasure transformation, sacrificing performance when operating on primitive types. Project Valhalla promises to address this limitation by specializing classes at load-time, allowing them to handle primitive types without any overhead.
 
-However, implementing opportunistic optimizations as black boxes can be counter-productive, as it becomes very difficult for programmers to predict performance, sometimes even luring them into decisions that harm performance instead of improving it. Furthermore, it imposes a cognitive load, as the programmers also act as the compiler, reasoning about low-level code.
+However, the current design of Project Valhalla severely limits the interaction between erased and specialized generics, disallowing code patterns that seem intuitive for programmers to use. This is a choice likely aimed at preventing programmers from introducing silent performance regressions.
 
-In this paper we present our work on making the opportunistic miniboxing optimization transparent, offering programmers insights about where the code is going to lose optimality and how to prevent that. We show several mechanisms that address different transparency problems: performance advisories explain how to avoid performance pitfalls, reflection allows programmers to peek at the transformation results at runtime and object transformations allow us to bridge hostile API with miniboxing-optimized code, maximizing performance.
+Scala has been using compile-time specialization for 7 years and now has a new generics compilation scheme, miniboxing. In Scala, the interaction between the three compilation schemes is not restricted at all, but can introduce subtle performance regressions.
 
-Our benchmarks show how missing any of these elements can severely harm the overall performance, with slowdowns of up to 14x when shutting down some of the miniboxing transformation components. We also have a recorded demo of how even novice programmers can use performance advisories to improve execution of their programs by 4x just by following the simple instructions given by the miniboxing transformation.
+In this paper we explain how we help programmers avoid these performance regressions in the miniboxing transformation: (1) by issuing actionable performance advisories that steer programmers away from performance regressions and (2) by providing alternatives to the standard library constructs that use the miniboxing encoding, thus avoiding the conversion overhead.
 
-% \keywords{opportunistic optimizations, data representation, Java bytecode, transformation, fast path, slow path, reflection}
+\vspace{-0.5em}
+
+\keywords{generics, specialization, miniboxing, backward compatibility, data representation, performance, Java, bytecode, JVM} % , transformation, fast path, slow path, reflection
+
+\vspace{-0.5em}
+
 \end{abstract}
