@@ -1,10 +1,10 @@
 \begin{abstract}
 
-Generics on the Java platform are compiled using the erasure transformation, sacrificing performance when operating on primitive types. Project Valhalla promises to address this limitation by specializing classes at load-time, allowing them to handle primitive types without any overhead.
+Generics on the Java platform are compiled using the erasure transformation, sacrificing performance when operating on primitive types. Project Valhalla promises to remedy this by allowing classes to be specialized at load-time so they can handle primitive types without any overhead.
 
 However, the current design of Project Valhalla severely limits the interaction between erased and specialized generics, disallowing code patterns that seem intuitive for programmers to use. This is a choice likely aimed at preventing programmers from introducing silent performance regressions.
 
-Scala has been using compile-time specialization for 7 years and now has a new generics compilation scheme, miniboxing. In Scala, the interaction between the three compilation schemes is not restricted at all, but can introduce subtle performance regressions.
+Scala has been using compile-time specialization for 6 years and now has a new generics compilation scheme, miniboxing. In Scala, the interaction between the three compilation schemes is not restricted at all, but can, indeed, introduce subtle performance issues.
 
 In this paper we explain how we help programmers avoid these performance regressions in the miniboxing transformation: (1) by issuing actionable performance advisories that steer programmers away from performance regressions and (2) by providing alternatives to the standard library constructs that use the miniboxing encoding, thus avoiding the conversion overhead.
 
