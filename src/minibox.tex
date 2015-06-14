@@ -85,8 +85,8 @@ In order to transform this method, we need to treat the primitive value as its o
 
 \begin{lstlisting-nobreak}
  def string(t: Object): String = t.toString
- def string`_M`(T_Tag: byte, t: long): String =
-                                        minibox2string(`T_Tag`, t)
+ def string`_M`(T_Type: byte, t: long): String =
+                                       minibox2string(`T_Type`, t)
 \end{lstlisting-nobreak}
 
 Then, when the programmer makes a call to |string|:
@@ -244,8 +244,8 @@ The code is translated to:
 
 \begin{lstlisting-nobreak}
  def newNode(t: Object) = new Node`_L`(t, null)
- def newNode`_M`(T_Tag: byte, t: long) =
-   new Node`_M`(T_Tag, t, null)
+ def newNode`_M`(T_Type: byte, t: long) =
+   new Node`_M`(T_Type, t, null)
 \end{lstlisting-nobreak}
 
 The translation hints at an optimization that can be done: given a value of type |Node[T]| where |T| is either a primitive or known to be miniboxed, the compiler can call |head_M| instead of |head|, skipping a conversion. The following code:
@@ -272,7 +272,7 @@ This method is translated to:
 
 \begin{lstlisting-nobreak}
  def getFirst(n: Node): Object = n.head
- def getFirst`_M`(T_Tag: byte, n: Node) = n.head`_M`(T_Tag)
+ def getFirst`_M`(T_Type: byte, n: Node) = n.head`_M`(T_Type)
 \end{lstlisting-nobreak}
 
 At this point, you may be wondering why the |getFirst| method receives a parameter of type |Node| instead of |Node_L|, or, respectively, |Node_M|. The reason is interoperability with erased generics.
