@@ -63,15 +63,13 @@ We show two approaches for harmonizing the compilation scheme across performance
 
 \textbf{Issuing actionable performance advisories} when compilation schemes do not match, allowing the programmer to harmonize them. For example, when a generic method takes a miniboxed class as a parameter and tries to call methods on it, we automatically generate performance advisories:
 
-\begin{lstlisting-nobreak}
+\begin{lstlisting-nobreak-nolang}
 scala> def getMboxString[U](mbox: Mbox[U]) =
-     |   mbox.getString()
-<console>:9: warning: The following code could benefit
-from miniboxing if the type parameter U of method
-getMboxString would be marked as "@miniboxed U":
+     |      mbox.getString()
+<console>:9: warning: The following code could benefit from miniboxing if the type parameter U of method getMboxString would be marked as "@miniboxed U":
          mbox.getString()
                ^
-\end{lstlisting-nobreak}
+\end{lstlisting-nobreak-nolang}
 
 Another problem that occurs frequently concerns library evolution: as a new compilation schemes arrives, it is best if all libraries start using it as soon as possible. However, backward compatibility prohibits changing the compilation scheme for the standard library, as it would break old bytecode. In Scala, we had this problem because many of the core language constructs, such as functions and tuples use specialization instead of miniboxing. Similarly, Java has as many as 20 manual specializations for the arity 1 lambda, such as |IntConsumer|, |IntPredicate| and so on. Replacing these by a single specialized functional interface would be desirable, but is realistically impossible. We present a solution for this:
 
