@@ -1,16 +1,16 @@
 \section{Performance Advisories}
 \label{sec:advisories}
 
-The previous section has shown that miniboxed generics alone provide two key invariants that ensure all primitive values are passed using the miniboxed (long integer) encoding:
+The previous section has shown that, when used alone, miniboxed generics provide two key invariants that ensure primitive values are always passed using the miniboxed (long integer) encoding:
 
 \begin{compactitem}
 \item Instantiations of miniboxed classes use the most specific variant available (e.g. a value of type |Node[Int]| has runtime class |Node_M|);
-\item Methods called on a miniboxed class use the most specific variant available (e.g. a runtime class |Node_M| never receives calls to the erased |head| accessor)
+\item Methods called on a miniboxed class use the most specific variant available (e.g. a runtime class |Node_M| never receives calls to the reference-based |head| accessor)
 \end{compactitem}
 
-We have also seen that the presence of erasure and wildcard-type abstractions (e.g. |Node[_]|) leads to violations of these two invariants: the erased variant of a miniboxed classes may be instantiated in place of a more specialized variant and the methods called may not always be the most specific ones available. In both cases, the compilation scheme is resiliant, producing correct results, a the expense of performance regressions, caused by boxing primitive types.
+The presence of erasure and wildcard-type abstractions (such as |Node[_]|) leads to violations of these two invariants: the object variant of a miniboxed class may be instantiated in place of a specialized variant or the method called may not be the most specific one available. In both cases, the compilation scheme is resilient, producing correct results, at the expense of performance regressions, caused by boxing primitive types.
 
-There key to avoiding these subtle performance regressions is to intercept the \textem{first instantiation or call} that violates the invariant, which, in turn, may lead to other violations. Luckily, this piece of information is available at compile-time and we can produce actionable warnings based on it.
+There key to avoiding these subtle performance regressions is to intercept the class instantiations and method calls that violate the invariant and report actionable warnings to the users. Luckily, these violations can be discovered during compilation, as all the necessary information is available.
 
 % A fundamentally difficult problem with using miniboxing is determining when the code has reverted to using boxed primitives. Having miniboxed code use boxed primitives is most commonly caused by interacting with erased generics and specialization, but can also be caused by technical or design limitations. While all these cases lead to correct and semantically-equivalent code, they do produce noticeable slowdowns.
 
@@ -18,7 +18,7 @@ There key to avoiding these subtle performance regressions is to intercept the \
 
 \subsection{Performance Advisories Overview}
 
-Advisories are most commonly triggered by interacting with erased or specialized generics, but can also be caused by technical or design limitations. There are as many as 10 different performance advisories implemented in the miniboxing plugin, but in order to focus on the concept, we will only look at the three most common advisories, both caused by the interaction with erased generics. To show exactly how the slowdowns occur, we can take the following piece of code:
+Advisories are most commonly triggered by interacting with erased or specialized generics, but can also be caused by technical or design limitations. There are as many as ten different performance advisories implemented in the miniboxing plugin, but in order to focus on the concept, we will only look at the three most common advisories, all of which are caused by the interaction with erased generics. To show exactly how the slowdowns occur, we can take the following piece of code:
 
 \begin{lstlisting-nobreak}
  def foo[`@miniboxed` T](t: T): T = bar(t)
@@ -37,7 +37,7 @@ The code is transformed to:
  def baz`_M`(..., v: long): long = v
 \end{lstlisting-nobreak}
 
-The translation shows that once execution entered the miniboxed path, by calling |foo_M|, it goes through without any boxing, only passing the value in the encoded (miniboxed) representation. However, let us think of what happens if the |@miniboxed| annotation is removed from method |bar|:
+The translation shows that once execution entered the miniboxed path, by calling |foo_M|, it goes through without any boxing, only passing the value in the encoded (miniboxed) representation. Now let's see what happens if the |@miniboxed| annotation is removed from method |bar|:
 
 \begin{lstlisting-nobreak}
  def foo[`@miniboxed` T](t: T): T = bar(t)
@@ -45,7 +45,7 @@ The translation shows that once execution entered the miniboxed path, by calling
  def baz[`@miniboxed` V](v: V): V = v
 \end{lstlisting-nobreak}
 
-This produces the following code:
+The bytecode produced is:
 
 \begin{lstlisting-nobreak}
  def foo(t: Object): Object = bar(t)
@@ -55,14 +55,14 @@ This produces the following code:
  def baz_M(..., v: long): long = v
 \end{lstlisting-nobreak}
 
-Two problems that occur here:
+Two problems occur here:
 
 \begin{compactitem}
  \item When method |foo| is called, it does not have a miniboxed version of |bar| to call;
  \item When method |bar| is called, although |baz| has a miniboxed version, it cannot be called as no type information is available.
 \end{compactitem}
 
-These two problems correspond exactly to the two of the main of performance advisories: forward and backward. A third one, unspecificity, will be shown below.
+These two problems correspond exactly to the two of the main of performance advisories: forward and backward. A third one, related to representation ambiguity, will be shown below.
 
 \subsubsection{Forward advisories.} The first advisory (compiler warning) received by the programmer is also called a forward warning:
 
@@ -70,7 +70,7 @@ These two problems correspond exactly to the two of the main of performance advi
 test.scala:7: warning: The method bar would benefit from miniboxing type parameter U, since it is instantiated by miniboxed type parameter T of method foo:
 
        def foo[@miniboxed T](t: T): T = bar(t)
-                                        ^
+                                                   ^
 \end{lstlisting-nobreak-nolang}
 
 This advisory pushes the miniboxed representation from caller to callee each time the arguments need to be boxed before being passed.
@@ -84,7 +84,7 @@ test.scala:8: warning: The following code could benefit from miniboxing speciali
                                      ^
 \end{lstlisting-nobreak-nolang}
 
-\subsubsection{Unspecific advisories.} Scala allows certain types that are neither primitives nor objects. In this category we have wildcard types (existentials in Scala), |Any| and |Nothing|. These types cannot be used to signal either primitive or an object type:
+\subsubsection{Ambiguity advisories.} Scala allows certain types that are neither primitive types nor objects. For example, wildcard types (existentials in Scala) can abstract over both primitive types and objects. |Any| is the top of the Scala type system hierarchy, with two subclasses: |AnyVal| it the supercalss of all value (and thus primitive) types while |AnyRef| is the superclass of all reference types, corresponding to Java's |Object|. Therefore, existentials, |Any| and |AnyVal| are not specific enough to allow us to pick a primitive or a reference type. In this case, we issue a warning and box their values:
 
 \begin{lstlisting-nobreak-nolang}
 test.scala:12: warning: Using the type argument "Any" for the miniboxed type parameter T of method foo is not specific enough, as it could mean either a primitive or a reference type. Although method foo is miniboxed, it won't benefit from specialization:
@@ -97,9 +97,9 @@ With these actionable warnings, even a novice programmer, not familiar to the mi
 
 The next section will discuss the implementation of performance advisories.
 
-\subsection{Unification Intuition}
+\subsection{Unification: Intuition}
 
-The reason we chose to present the ``forward'', ``backward'' and ``unspecific'' advisories is because, although they are only three of the ten cases, they are the warnings a typical programmer is most likely to encounter. They apply to almost all cases where a specialized variant of either a method or class needs to be chosen:
+The reason we chose to present the ``forward'', ``backward'' and ``ambiguity'' advisories is because, although they are only three of the ten cases, they are the warnings a typical programmer is most likely to encounter. They apply to almost all cases where a specialized variant of either a method or class needs to be chosen:
 
 \begin{compactitem}
  \item Calling miniboxed methods;
@@ -108,11 +108,11 @@ The reason we chose to present the ``forward'', ``backward'' and ``unspecific'' 
  \item Extending miniboxed classes or traits;
 \end{compactitem}
 
-The one element common to all these cases is the need to pick the best matching miniboxed variant based on a set of type parameters. For example, given the method |foo| defined previously, if we call |foo[Int](4)|, we need to find the |foo_M| variant and redirect the code to it. And, in some cases, either the type parameters of the target or the type arguments are not specific enough. For example, in the call to |foo[Any]("hi")|, the type argument |Any| is not specific enough, resulting in an ``unspecific'' advisory.
+The one element common to all these cases is the need to pick the best matching miniboxed variant based on a set of type parameters. For example, given the method |foo| defined previously, if we call |foo[Int](4)|, we need to find the |foo_M| variant and redirect the code to it. And, in some cases, either the type parameters of the target or the type arguments are not specific enough. For example, in the call to |foo[Any]("hi")|, the type argument |Any| is not specific enough, resulting in an ``ambiguity'' advisory.
 
 Let us now focus on a more formal definition
 
-\subsection{Unification Formalization}
+\subsection{Unification: Formalization}
 
 Let us call the original method or class |O|, with the type parameters |F1| to |Fn| and |VO| the set of miniboxed variants corresponding to |O|. Then, each specialized variant |V| corresponds to a mapping from each type parameter to an entry in the set of \{miniboxed, object, erased\}. Let us call the inverse mapping, from the set of type parameter specializations to variants |VS|.
 
@@ -160,7 +160,7 @@ res7: Class[_ >: D[_]] = class C_L
 
 By now you probably guessed where the names forward and backward warnings came from: the direction in which the miniboxing transformation propagates between the type parameter and the type argument. We will now describe some of the implementation issues.
 
-\subsection{Unification Implementation}
+\subsection{Unification: Implementation}
 
 The performance advisories are tightly coupled with the unification algorithm, which decides the variant that should be used for transforming the code. The processing is done one step at a time, with a type parameter and type argument pair. We will now show some issues that an implementer must be careful about.
 

@@ -52,7 +52,7 @@ Having multiple methods, also called specialized variants or simply specializati
  val five: int = identity`_I`(5)
 \end{lstlisting-nobreak}
 
-This transformation side-steps the need for a heap object allocation, improving the program performance. However, specialization is not without limitations. As we have seen, it creates 10 versions of the method for each type parameter: the erased version plus 9 specializations (Scala has the 8 primitive types in Java and |Unit| primitive type, which corresponds to Java's |void|). And it gets worse: in general, for $N$ specialized type parameters, it creates $10^N$ specialized variants, the Cartesian product covering all combinations.
+This transformation side-steps the need for a heap object allocation, improving the program performance. However, specialization is not without limitations. As we have seen, it creates 10 versions of the method for each type parameter: the reference-based version plus 9 specializations (Scala has the 8 primitive types in Java and |Unit| primitive type, which corresponds to Java's |void|). And it gets worse: in general, for $N$ specialized type parameters, it creates $10^N$ specialized variants, the Cartesian product covering all combinations.
 
 Lacking Project Valhalla's virtual machine support, Scala specialization generates the specialized variants during compilation and stores them as bytecode. This prevents the Scala library from using specialization extensively, since many important classes have one, two or even three type parameters. This led to the next development, the miniboxing transformation.
 
@@ -81,7 +81,7 @@ There is an ellipsis in the definition of the |identity_M| method, which stands 
  def string[`@miniboxed` T](t: T): String = t.toString
 \end{lstlisting-nobreak}
 
-In order to transform this method, we need to treat the primitive value as its original type (corresponding to |T|) rather than a long integer. To do so, we use the type byte to differentiate between different primitive types encoded as long:
+In order to transform this method, we need to treat the primitive value as its original type (corresponding to |T|) rather than a long integer. To do so, we use the type byte:
 
 \begin{lstlisting-nobreak}
  def string(t: Object): String = t.toString
@@ -199,7 +199,7 @@ Given these constraints, miniboxing compiles |Node| to an interface:
 
 \begin{lstlisting-nobreak}
  interface Node {
-   def head(): Object           // erased accessor
+   def head(): Object           // reference-based accessor
    def head_M(...): long // miniboxed acccesor
    def tail: Node[T]
  }
@@ -275,7 +275,7 @@ This method is translated to:
  def getFirst`_M`(T_Tag: byte, n: Node) = n.head`_M`(T_Tag)
 \end{lstlisting-nobreak}
 
-At this point, you may be wondering why the |getFirst| method receives a parameter of type |Node| instead of |Node_L|, or, respectively, |Node_M|. The answer is: to interoperate with erased generics.
+At this point, you may be wondering why the |getFirst| method receives a parameter of type |Node| instead of |Node_L|, or, respectively, |Node_M|. The reason is interoperability with erased generics.
 
 %This translation scheme, although not the only one, satisfies the three criteria set above.
 
