@@ -6,7 +6,7 @@ Generics on the Java platform are compiled using the erasure transformation \cit
 % Full discussion: ersure merits, allowing JVM languages to ``erase'' to JVM bytecode
 
 % Project Valhalla - exploring specialization on the JVM
-The performance drawbacks of erasure are currently being addressed in Project Valhalla \cite{goetz-specialization, rose-value-classes-tearing, rose-value-classes-vm}, an important undertaking led by the Java platform architects and aimed at providing unboxed generics for Java and other JVM languages. According to Project Valhalla, the updated bytecode format will include the necessary type information to allow load-time class specialization, effectively creating different versions of classes that directly support primitive types. This load-time transformation approach is also employed by the .NET framework \cite{dot-net-generics, dot-net-generics-form} in order to implement generics.
+The performance drawbacks of erasure are currently being addressed in Project Valhalla \cite{goetz-specialization, rose-value-classes-tearing, rose-value-classes-vm}, an important undertaking led by the Java platform architects and aimed at providing unboxed generics for Java and other JVM languages. According to Project Valhalla, the updated bytecode format will include the necessary type information to allow load-time class specialization, effectively creating different versions of classes that directly support primitive types. This load-time transformation approach is also employed by the .NET framework \cite{dot-net-generics,dot-net-generics-form} in order to implement generics.
 
 
 % The current approach is restrictive in that it segregates different specialization translations:
