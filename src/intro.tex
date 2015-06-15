@@ -3,7 +3,7 @@
 
 % Generics - erasure vs specialization
 Generics on the Java platform are compiled using the erasure transformation \cite{java-erasure}, which allows them to be fully backward compatible with pre-generics bytecode. Unfortunately, on the long run, this choice sacrificed performance, since it led to Java primitive types being transformed into heap objects each time they interact with generics. This conversion, known as boxing, compromises the execution performance and increases the heap footprint, forcing Java to lag behind lower-level languages such as C or C++.
-% Full discussion: ersure merits, allowing JVM languages to ``erase'' to JVM bytecode
+% Full discussion: erasure merits, allowing JVM languages to ``erase'' to JVM bytecode
 
 % Project Valhalla - exploring specialization on the JVM
 The performance drawbacks of erasure are currently being addressed in Project Valhalla \cite{goetz-specialization, rose-value-classes-tearing, rose-value-classes-vm}, an important undertaking led by the Java platform architects and aimed at providing unboxed generics for Java and other JVM languages. According to Project Valhalla, the updated bytecode format will include the necessary type information to allow load-time class specialization, effectively creating different versions of classes that directly support primitive types. This load-time transformation approach is also employed by the .NET framework \cite{dot-net-generics,dot-net-generics-form} in order to implement generics.

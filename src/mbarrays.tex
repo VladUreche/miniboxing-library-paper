@@ -3,7 +3,7 @@
 
 The array transformation \cite{romain-mbarrays} is beyond the scope of this paper, but we included it as a good example for using performance advisories.
 
-The |Array| bulk storage in Scala makes certain assumptions that are not compatible with miniboxing, leading to performance regressions in some corner cases. To address this limiation, we introduced a new type of array, dubbed |MbArry| which integrates very well within the miniboxing framework. However, the |MbArray| API does not match the one in Scala arrays, so we cannot automate the transformation. Instead, we use performance advisories to guide the programmers into switching to |MbArray|:
+The |Array| bulk storage in Scala makes certain assumptions that are not compatible with miniboxing, leading to performance regressions in some corner cases. To address this limitation, we introduced a new type of array, dubbed |MbArry| which integrates very well within the miniboxing framework. However, the |MbArray| API does not match the one in Scala arrays, so we cannot automate the transformation. Instead, we use performance advisories to guide the programmers into switching to |MbArray|:
 
 \begin{lstlisting-nobreak-nolang}
 scala> def newArray[@miniboxed T: ClassTag] = new Array[T](100)

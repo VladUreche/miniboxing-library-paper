@@ -84,7 +84,7 @@ test.scala:8: warning: The following code could benefit from miniboxing speciali
                                      ^
 \end{lstlisting-nobreak-nolang}
 
-\subsubsection{Ambiguity advisories.} Scala allows types to abstract over both primitives and objects. A good example are wildcard types (known as existentials in Scala) can abstract over any type in the language. |Any| is the top of the Scala type system hierarchy, with two subclasses: |AnyVal| it the supercalls of all value (and thus primitive) types while |AnyRef| is the superclass of all reference types, corresponding to Java's |Object|. Therefore, existentials, |Any| and |AnyVal| are not specific enough to pick a primitive or a reference representation. In this case, we issue a warning and box the values:
+\subsubsection{Ambiguity advisories.} Scala allows types to abstract over both primitives and objects. A good example are wildcard types (known as existentials in Scala) can abstract over any type in the language. |Any| is the top of the Scala type system hierarchy, with two subclasses: |AnyVal| it the superclass of all value (and thus primitive) types while |AnyRef| is the superclass of all reference types, corresponding to Java's |Object|. Therefore, existentials, |Any| and |AnyVal| are not specific enough to pick a primitive or a reference representation. In this case, we issue a warning and box the values:
 
 \begin{lstlisting-nobreak-nolang}
 test.scala:12: warning: Using the type argument "Any" for the miniboxed type parameter T of method foo is not specific enough, as it could mean either a primitive or a reference type. Although method foo is miniboxed, it won't benefit from specialization:
