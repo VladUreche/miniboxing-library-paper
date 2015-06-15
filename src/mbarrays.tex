@@ -1,6 +1,7 @@
 \subsection{Arrays}
 \label{sec:mbarrays}
 
+The array
 % Arrays provide efficient memory usage and constant random access time, thanks to the elements being stored in a contiguous fashion. This is also optimal from a low level perspective as it cooperates well with processor caches, thanks to the spatial locality of the elements. For these reasons, arrays are commonly used as the underlying storage in high level collections, and are the container of choice for implementing performance-critical algorithms.
 %
 % Since elements of an array are stored contiguously in memory, accessing an element requires knowing its size: assuming an integer is encoded on 4 bytes, a compiler will know that the $n^\text{th}$ element of an integer array stored at the address $a$ can be accessed by de-referencing the address $a + 4 \times n$. Or, in the case of a higher-level virtual machine, such as the JVM, to avoid tying the implementation to architecture details, each primitive array, such as |int[]| or |double[]| has its own bytecodes to access and update elements, which de-reference the correct address for the given architecture.
