@@ -25,24 +25,24 @@ The translated low-level code is:
  def mbox`_M`(T_Type: byte, t: long): String = `???`
 \end{lstlisting-nobreak}
 
-The reference-based |mbox| and |spec| methods can directly call each other, since there is a 1 to 1 correspondence. The problem is that, unlike these two methods, none of the specialized variants have a 1 to 1 correspondence. This only leaves the reference-based methods as candidates for the interoperation between miniboxing and specialization.
+The reference-based |mbox| and |spec| methods can directly call each other, since there is a 1 to 1 correspondence. The problem is that, unlike these two methods, none of the specialized variants have a 1 to 1 correspondence. This only leaves the reference-based methods as candidates for the direct interoperation between miniboxing and specialization.
 
 Although it may seem like |mbox_M| could directly invoke |spec_J|, since the argument types match, this would be incorrect, as the value |t| in |mbox_M| can be any primitive type, encoded as a long, whereas |t| in |spec_J| can only be a long integer. Thus, if we were to call |spec_J| from |mbox_M| passing an encoded boolean, instead of returning either ``true'' or ``false'', it would return the encoded value of the boolean.
 
-The |mbox_M| method is in possession of one more piece of information: |T_Type|, the type byte describing the encoded primitive type. In order to call the correct specialized method, |mbox_M| could switch on the type byte and perform the correct conversion:
+The |mbox_M| method is in possession of one more piece of information: |T_Type|, the type byte describing the encoded primitive type. The type byte allows the miniboxed method to choose which of its specialized counterparts to call:
 
 \begin{lstlisting-nobreak}
  def mbox`_M`(T_Type: byte, t: long): String =
    T_Type match {
-     case INT => spec_I(minibox2int(t))
+     case INT     => spec_I(minibox2int(t))
      case LONG => spec_M(minibox2long(t))
      ...
    }
 \end{lstlisting-nobreak}
 
-Although this approach seems to work and can easily be automated, it is actually a  step back in the wrong direction: the miniboxing transformation would be introducing extra overhead without offering the programmer any feedback on how and why this happens. Furthermore, when multiple type parameters are specialized, all $10^N$ possible combinations would have to be added to the match, making it very large. This is likely to confuse the Java Virtual Machine heuristics for inlining, causing severe performance regressions that are difficult to debug.
+Although this indirect approach seems to work and can easily be automated, it is actually a  step back in the wrong direction: the miniboxing transformation would be introducing extra overhead without offering the programmer any feedback on how and why this happens. Furthermore, when multiple type parameters are specialized, all $10^N$ possible combinations would have to be added to the match, making it very large. This is likely to confuse the Java Virtual Machine inlining heuristics, causing severe performance regressions that are difficult to debug.
 
-It may seem like the other way around would be easier: allowing specialized code to call miniboxed methods without performing a switch. However this is not the case since the specialization transformation is not aware of miniboxing. Therefore, even when calling miniboxed methods, specialization resorts to invoking the generic version, boxing the arguments and unboxing the returned value.
+It may seem like the other way around would be easier: allowing specialized code to call miniboxed methods without performing a switch. However this is not the case because specialization is not aware of miniboxing. Therefore, even when calling miniboxed methods, specialization resorts to invoking the generic version, boxing the arguments and unboxing the returned value.
 
 With this in mind, our decision was to go with simplicity and symmetry: the bridge between miniboxing and specialization goes through boxing. To allow transparency, miniboxing issues performance advisories about specialized code that should be miniboxed:
 
@@ -61,17 +61,17 @@ This solution works well with most of the code that lies within the programmer's
    (f(tup._1), f(tup._2))
 \end{lstlisting-nobreak}
 
-Despite the annotations, with the vanilla miniboxing transformation, all versions of the |tupleMap| method use the reference-based tuple accessors and function application, leading to slow paths irreversibly creeping into miniboxed code. For many applications, this is a no-go, so our task was to eliminate these slowdowns. In the following subsection we present three possible approaches and show where each works best.
+Despite the annotations, with the vanilla miniboxing transformation, all versions of the |tupleMap| method use reference-based tuple accessors and function applications, leading to slow paths irreversibly creeping into miniboxed code. For many applications, this is a no-go, so our task was to eliminate these slowdowns. In the following subsection we present three possible approaches and show where each works best.
 
 \subsection{Eliminating the Interoperation Overhead}
 
-We show three approaches to eliminating the boxing overhead when calling specialized code from miniboxed classes and/or methods.
+We show three approaches to eliminating the boxing overhead when calling specialized code from miniboxed classes or methods.
 
 \subsubsection{Accessors.} The simplest answer to the problem of inter-operating with specialization is to switch on the type byte, as shown previously. To avoid confusing the Java Virtual Machine inlining heuristics, we can extract the operation into a static method, that we call separately. This approach needs to be implemented both for accessors, allowing the specialized values to be extracted directly into the miniboxed encoding and for constructors, allowing miniboxed code to instantiate specialized classes without boxing. This is the approach taken for |Tuples| (\S\ref{sec:tuples});
 
-\subsubsection{Transforming objects.} The accessors approach allows us to pay a small (but non-null) overhead with each access. This is a good trade-off when the constructs are only accessed a couple of times during their lifetime, which is the case for tuples. In other cases, such as functions, the |apply| method is presumably called many times during the object lifetime, making it worthwhile to completely eliminate the overhead. In this case, a better approach is to replace the |Function| objects by |MiniboxedFunction| objects, introducing coercions between them where necessary. This way, the |apply| method exposed by |MiniboxedFunction| can be called directly, and this can compensate for a potentially greater cost of constructing the |MiniboxedFunction| object. This way, switching on the type bytes is done when converting the function and is a one-time cost, which then amortizes over many function applications (\S\ref{sec:functions});
+\subsubsection{Transforming objects.} The accessors approach allows us to pay a small overhead with each access. This is a good trade-off when the constructs are only accessed a couple of times during their lifetime, which is the case for tuples. In other cases, such as functions, the |apply| method is presumably called many times during the object lifetime, making it worthwhile to completely eliminate the overhead. In this case, a better approach is to replace the |Function| objects by |MiniboxedFunction|s, introducing conversions between them where necessary. This way, the |apply| method exposed by |MiniboxedFunction| can be called directly, and this can compensate for a potentially greater cost of constructing the |MiniboxedFunction| object. This way, switching on the type bytes is done only once, when converting the function, and then amortizes over the function lifetime (\S\ref{sec:functions});
 
-\subsubsection{New API.} In some cases, the API and guarantees are hardcoded into the compiler. This is the case for the Scala |Array| class, for which the miniboxing plugin chose the Accessors approach \cite{miniboxing}. However, several limitations of Scala arrays can be eliminated by defining a new |MbArray| class. This approach will be discussed in detail in the Arrays subsection (\S\ref{sec:mbarrays}).
+\subsubsection{New API.} In some cases, the API and guarantees are hardcoded into the platform. This is the case for the Scala |Array| class, for which the original miniboxing plugin chose the accessors approach \cite{miniboxing}. However, a better tradeoff is achieved by defining a new |MbArray| class with a similar API. This approach will be briefly mentioned in the Arrays subsection (\S\ref{sec:mbarrays}).
 
 The next sections discuss the three methods above.
 
@@ -80,7 +80,7 @@ The next sections discuss the three methods above.
 
 The Scala programming language offers a very concise and pleasant syntax for library tuples, allowing users to write |(3,5)| instead of the desugared |new Tuple2[Int, Int](3,5)|. Similarly, it allows programmers to write |(Int, Int)| instead of |Tuple2[Int, Int]|. If we were to introduce miniboxed tuples, we would not be able to use the syntactic sugar to express programs, losing the support of many programmers. Instead, a better choice is to find way to efficiently access specialized Scala tuples, without boxing values.
 
-Although we don't have statistically significant data, our experience suggests that |Tuple| classes are usually created just to have their components accessed a few times during their life. Therefore, both for compatibility reasons and to avoid costly conversions, we decided to allow the |Tuple| class to remain unchanged, instead focusing on providing accessors and constructors that use the miniboxed encoding.
+Although we don't have statistically significant data, our experience suggests that |Tuple| classes have their components accessed only a few times during their life. Therefore, both for compatibility reasons and to avoid costly conversions, we decided to allow the |Tuple| class to remain unchanged, instead focusing on providing accessors and constructors that use the miniboxed encoding.
 
 \subsubsection{The optimized tuple accessors} are written by hand and are explicitly given the type byte:
 
@@ -104,7 +104,7 @@ Once the tuple is cast to a |Tuple1[Int]|, the specialization transformation kic
 
 \begin{compactitem}
  \item By default, programmers do not have access to the type bytes directly, as this would allow them to introduce unsoundness in the type system (they can access the type byte in a read-only fashion, using miniboxing reflection, but this is outside the scope of this paper);
- \item One of the reasons we chose tuples is their great integration with the language, allowing a very concise syntax. Asking the programmers to use anything other than this syntax would be as bad as developing out own, no-sugar-syntax version of the tuple.
+ \item One of the reasons tuples are useful is their great integration with the language, allowing a very concise syntax. Asking programmers to use anything other than this syntax would be as bad as developing our own, no-syntax-sugar miniboxed tuple.
 \end{compactitem}
 
 With these three changes, benchmarks show a 2x speedup when accessing tuples and a 5\% slowdown compared to the equivalent code which accesses the tuples directly. The benchmark we used was a tuple quicksort algorithm (\S\ref{sec:bench}).
