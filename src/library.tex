@@ -103,7 +103,7 @@ Once the tuple is cast to a |Tuple1[Int]|, the specialization transformation kic
 \subsubsection{Closing the cycle} is automatically done by the miniboxing plugin when encountering a tuple access followed by a conversion to the miniboxed representation or when the tuple constructor is invoked with all the arguments being transformed from the miniboxed representation to the boxed one. There are two reasons this step needs to be automated:
 
 \begin{compactitem}
- \item By default, programmers do not have access to the type bytes directly, as this would allow them to introduce unsoundness in the type system (they can access the type byte in a read-only fashion, using miniboxing reflection, but this is outside the scope of this paper);
+ \item By default, programmers do not have access to the type bytes directly, as this would allow them to introduce unsoundness in the type system (they can inspect their representation using miniboxing reflection, but this is outside the scope);
  \item One of the reasons tuples are useful is their great integration with the language, allowing a very concise syntax. Asking programmers to use anything other than this syntax would be as bad as developing our own, no-syntax-sugar miniboxed tuple.
 \end{compactitem}
 
@@ -143,17 +143,17 @@ Since |Function| objects are specialized, the code is compiled to:
  }
 \end{lstlisting-nobreak}
 
-So, despite the concise syntax, when interoperating with miniboxed code, functions can only use the reference-based |apply| method, leading to silent performance regressions.
+When interoperating with miniboxed code, functions can only use the reference-based |apply|, introducing performance regressions.
 
 In our early experiments on transforming the Scala collections hierarchy using the miniboxing transformation \cite{miniboxing-linkedlist}, we were proposing an alternative miniboxed function trait, called |MbFunction|, and were performing desugaring by hand. The performance obtained was good, but desugaring by hand was too tedious. Later on, we received a suggestion from Alexandru Nedelcu stating that, since functions in Scala are specialized, we should be able to interface directly, thus benefiting from the desugaring build into Scala without paying for the boxing overhead.
 
-Our initial approach used accessors, but we soon learned that switching on as many as 3 type bytes with each function application incurs a significant overhead. Instead, we decided to switch to re-introduce |MbFunctionX| within the code compiled by the miniboxing plugin, where |X| is the arity and can range between 0 and 2 (Scala includes functions with arities up to 22, but arities above 2 are no longer specialized). Yet, this time the |MbFunctionX| objects would be introduced automatically.
+Our initial approach used accessors, but we soon learned that switching on as many as 3 type bytes with each function application incurs a significant overhead. Instead, we decided to re-introduce |MbFunctionX| within the code compiled by the miniboxing plugin, where |X| is the arity and can range between 0 and 2 (Scala includes functions with arities up to 22, but arities above 2 are no longer specialized). Yet, this time the |MbFunctionX| objects would be introduced automatically.
 
 \subsubsection{Code transformation.} The miniboxing plugin automatically transforms |FunctionX| to |MbFunctionX|:
 
 \begin{compactitem}
   \item All references to |FunctionX| are converted to |MbFunctionX|;
-  \item New function definitions automatically create |MbFunctions|;
+  \item Function definitions create |MbFunctionX| instead of |FunctionX|;
 \end{compactitem}
 
 For example, the code:
@@ -175,7 +175,7 @@ Is transformed into:
      val functionX: Function2 = ...
    }
  def choice`_M`(T_Type: byte, seed: int): `MbFunction2` =
-   new AbstractMbFunction2_MJ {
+   new AbstractMbFunction2_MM {
      def apply_MJ(..., t1: long, t2: long) = ...
      val functionX: Function2 = ...
    }
@@ -187,20 +187,14 @@ Is transformed into:
 Explaining how the code transformation works is beyond the scope of this paper and has been thoroughly studied in previous literature \cite{ldl,ildl-tech}. The result is that, within miniboxed code, only the |MbFunctionX| representation is used. |FunctionX| is only referenced in a limited number of cases:
 \begin{compactitem}
   \item When miniboxed code needs to pass a function to pre-miniboxing code (which uses the |FunctionX| representation);
-  \item When miniboxed code receives a function from pre-miniboxing code;
+  \item When miniboxed code receives a function from pre-miniboxing code (using the |FunctionX| representation);
   \item When a miniboxed class or method extends a pre-miniboxed entity that takes |FunctionX| arguments;
   \item When an |MbFunctionX| value is assigned to supertypes of |FunctionX|, it needs to be converted;
 \end{compactitem}
 
-In these cases, the |MbFunctionX| values need to be converted to |FunctionX| or vice-versa. In this case, we need efficient conversions.
+\subsubsection{Conversions} can occur in both directions, from |FunctionX| objects to |MbFunctionX| and back.
 
-\subsubsection{Conversions} can occur in two directions:
-\begin{compactitem}
-  \item Converting |FunctionX| objects to |MbFunctionX|;
-  \item Converting |MbFunctionX| objects to |FunctionX|;
-\end{compactitem}
-
-Converting |FunctionX| objects to their miniboxed counterparts is done using switches that allow the newly created |MbFunctionX| to hard-code efficient function invocation:
+Converting |FunctionX| objects to their miniboxed counterparts is done using switches that allow the newly created |MbFunctionX| to directly call the unboxed |apply|, skipping boxing:
 
 \begin{lstlisting-nobreak}
  def function0_bridge[R](R_Tag: Byte, f: Function0[R]): MiniboxedFunction0[R] =
@@ -209,14 +203,24 @@ Converting |FunctionX| objects to their miniboxed counterparts is done using swi
        val f_cast = f.asInstanceOf[Function0[Int]]
        new MbFunction0[Int] {
          def functionX: Function0[Unit] = f_cast
-         def apply(): Unit = f_cast.apply()
+         def apply(): Int = f_cast.apply()
        }
      ...
    }).asInstanceOf[MiniboxedFunction0[R]]
 \end{lstlisting-nobreak}
 
-In the above code, in the first case, |f| is statically known to be of type |Function[Int]|, thanks to the type byte. This allows the code to introduce |f_cast|, which in turn allows the specialization transformation to rewrite the call from the reference-based |apply| to the unboxed |apply_I|. With this rewriting, the anonymous |MbFunction| instance hardcodes a fast calling path to its underlying function.
+In the above code, |f| is statically known to be of type |Function[Int]|, thanks to the type byte. This allows the code to introduce |f_cast|, which in turn allows the specialization transformation to rewrite the call from the reference-based |apply| to the unboxed |apply_I|. On its side, miniboxing instantiates |MbFunction0_M| instead of |MbFunction0| and moves the code to the specialized |apply_M| method. With this rewriting, the anonymous |MbFunction| instance can call the underlying function without boxing:
 
-Converting |MbFunctionX| objects to |FunctionX| is easier, since all |MbFunctionX| objects maintain a reference to their function counterpart, available through the |functionX| method. This provides a fast-path for the conversion.
+\begin{lstlisting-nobreak}
+   new MbFunction0_M {
+     def T_Type: byte = INT
+     // fast path for function application:
+     def apply_M(): long = `int2minibox(f_cast.apply())`
+     // fast path for conversion:
+     def functionX: Function0 = f_cast
+   }
+\end{lstlisting-nobreak}
 
-By transforming the function representation, we have eliminated the overhead of calling functions completely. Furthermore, using the previous two strategies to minimize the conversion overhead, we enabled function-heavy applications to achieve speedups between 2 and 14x  \cite{ildl-tech, ildl-plugin-wiki}.
+Converting |MbFunctionX| objects to |FunctionX| easy, thanks to the |functionX| method.
+
+By transforming the function representation, we have eliminated the overhead of calling functions completely. Furthermore, using the previous two strategies to minimize the conversion overhead, we enabled function-heavy applications to achieve speedups between 2 and 14x \cite{ildl-tech, ildl-plugin-wiki}.
