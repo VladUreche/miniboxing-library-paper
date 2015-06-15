@@ -1,13 +1,13 @@
-\section{Functions and Tuples}
+\section{Interoperating with Existing Library Constructs}
 \label{sec:library}
 
-In this section we will show how slow paths occur when miniboxed code interacts with the Scala standard library, which uses either erased generics or the original specialization transformation, which generates 10 variants per type parameter. We show three approaches to avoiding the slow path and show how each of them bridges the gap to one of the library constructs.
+There is a clear parallel between the manual lambda specializations that are already in the Java Standard Library and thus cannot be eliminated and the specialized constructs in the Scala Standard Library, which cannot be replaced by a compiler plugin. Project Valhalla brings the ability to specialize generics to Java, while miniboxing brings a new compilation scheme for Scala generics. What is common between these two cases is the hard requirement that the new transformations work well with the predating constructs, which use different compilation schemes. This is the problem of interoperating with existing libraries.
 
-Although in this section we mostly focus on the interoperation between miniboxing and specialization, the techniques are general and can be applied to Java lambdas and other classes as well.
+In this section we will show how performance regressions occur when miniboxed code interacts with the Scala standard library, which uses either erased generics or the original specialization transformation. To counter these performance regressions, we show three approaches to that efficiently bridge the gap between the miniboxing and specialization compilation schemes. Although this section mostly focuses on the interoperation between miniboxing and specialization, the techniques are general and can be applied to Java lambdas and Valhalla as well.
 
 \subsection{The Interoperation Problem}
 
-When interacting with the library from miniboxed code, the programmers are aware functions and tuples are specialized, so they expect to have automatic and flawless performance when using them. However, calling specialized code from miniboxed code and vice-versa is not trivial:
+When interacting with the library from miniboxed code, the programmers forget the fact that library constructs, such as tuples and functions, do not share the same compilation scheme. Thus, they expect the same performance and flexibility as when using miniboxed classes. However, calling specialized code from miniboxed code and vice-versa is not trivial:
 
 \begin{lstlisting-nobreak}
  def spec[@specialized T](t: T): String = t.toString
@@ -25,7 +25,9 @@ The translated low-level code is:
  def mbox`_M`(T_Type: byte, t: long): String = `???`
 \end{lstlisting-nobreak}
 
-The reference-based |mbox| method can call |spec|, since there is a 1 to 1 correspondence. But this is not the case for |mbox_M| and the nine specialized versions of method |spec|. And while it may seem like |mbox_M| could directly invoke |spec_J|, since the argument type matches, this would be incorrect, as |t| in |mbox_M| can be any primitive type, including boolean, whereas |spec_J| would just treat the encoding as a long integer (thus, instead of returning the string ``true'' or ``false'', it would return the encoded value of the boolean).
+The reference-based |mbox| and |spec| methods can directly call each other, since there is a 1 to 1 correspondence. The problem is that, unlike these two methods, none of the unboxed variants have a 1 to 1 correspondence, leaving the interoperation between miniboxing and specialization to occur through boxed values.
+
+Although it may seem like |mbox_M| could directly invoke |spec_J|, since the argument types match, this would be incorrect, as the value |t| in |mbox_M| can be any primitive type, encoded as a long, whereas |t| in |spec_J| can only be a long integer. Thus, if we were to call |spec_J| from |mbox_M| passing an encoded boolean, instead of returning either ``true'' or ``false'', it would return the encoded value of the boolean.
 
 The |mbox_M| method is in possession of one more piece of information: |T_Type|, the type byte describing the encoded primitive type. In order to call the correct specialized method, |mbox_M| could switch on the type byte and perform the correct conversion:
 
@@ -38,11 +40,11 @@ The |mbox_M| method is in possession of one more piece of information: |T_Type|,
    }
 \end{lstlisting-nobreak}
 
-Although this approach seems to work, it takes a step back on the transparency scale: the miniboxing transformation would be introducing extra overhead without offering the programmer any feedback on how and why this happened. Furthermore, multiple type bytes may be involved in the switch, generating a combinatorial explosion which is likely to confuse the Java Virtual Machine heuristics for inlining. This would lead to sudden (and difficult to debug) performance regressions.
+Although this approach seems to work and can easily be automated, it is actually a  step back in the wrong direction: the miniboxing transformation would be introducing extra overhead without offering the programmer any feedback on how and why this happens. Furthermore, when multiple type parameters are specialized, all $10^N$ possible combinations would have to be added to the match, making it very large. This is likely to confuse the Java Virtual Machine heuristics for inlining, causing severe performance regressions that are difficult to debug.
 
-It may seem like the other way around would be much easier, allowing specialized code to call miniboxed code without performing a switch. However this is not the case since the specialization transformation is not aware of miniboxing. Therefore, when calling miniboxed methods, specialization resorts to invoking the generic version, boxing the arguments and unboxing the returned value.
+It may seem like the other way around would be easier: allowing specialized code to call miniboxed methods without performing a switch. However this is not the case since the specialization transformation is not aware of miniboxing. Therefore, even when calling miniboxed methods, specialization resorts to invoking the generic version, boxing the arguments and unboxing the returned value.
 
-With this in mind, our decision was to go with simplicity and symmetry: both miniboxing and specialization go through boxing when calling each other's transformed code. To allow transparency, miniboxing issues performance advisories about specialized code that should be miniboxed:
+With this in mind, our decision was to go with simplicity and symmetry: the bridge between miniboxing and specialization goes through boxing. To allow transparency, miniboxing issues performance advisories about specialized code that should be miniboxed:
 
 \begin{lstlisting-nobreak-nolang}
 scala>  def mbox[@miniboxed T](t: T): String = spec(t)
@@ -51,7 +53,7 @@ scala>  def mbox[@miniboxed T](t: T): String = spec(t)
                                                             ^
 \end{lstlisting-nobreak-nolang}
 
-This solution works well with most of the code that lies within the programmer's control, including for the case where 3rd party libraries distribute both a specialized and a miniboxed version. However, the one library which cannot have multiple versions and happens to use specialization is the Scala standard library. And there are two very wide-spread constructs affected by this: Tuples and Functions, both of which are specialized. This makes the following function a worst-case scenario for vanilla miniboxing:
+This solution works well with most of the code that lies within the programmer's control, including for the case where 3rd party libraries distribute both a specialized and a miniboxed version. However, the one library which cannot have multiple versions and happens to use specialization is the Scala standard library. The two most wide-spread constructs affected by this are Tuples and Functions, both of which are specialized. This makes the following function a worst-case scenario for vanilla miniboxing:
 
 \begin{lstlisting-nobreak}
  def tupleMap[@miniboxed T,
@@ -59,7 +61,7 @@ This solution works well with most of the code that lies within the programmer's
    (f(tup._1), f(tup._2))
 \end{lstlisting-nobreak}
 
-Despite the miniboxing annotations, with the vanilla miniboxing transformation, all versions of the |tupleMap| method use the reference-based tuple accessors and function application, leading to slow paths irreversibly creeping into miniboxed code. For many applications, this is a no-go, so our task was to eliminate these slowdowns. In the following subsection we present three possible approaches and show where each works best.
+Despite the annotations, with the vanilla miniboxing transformation, all versions of the |tupleMap| method use the reference-based tuple accessors and function application, leading to slow paths irreversibly creeping into miniboxed code. For many applications, this is a no-go, so our task was to eliminate these slowdowns. In the following subsection we present three possible approaches and show where each works best.
 
 \subsection{Eliminating the Interoperation Overhead}
 
