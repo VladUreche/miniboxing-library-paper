@@ -1,271 +1,271 @@
 \subsection{Arrays}
 \label{sec:mbarrays}
 
-Arrays provide efficient memory usage and constant random access time, thanks to the elements being stored in a contiguous fashion. This is also optimal from a low level perspective as it cooperates well with processor caches, thanks to the spatial locality of the elements. For these reasons, arrays are commonly used as the underlying storage in high level collections, and are the container of choice for implementing performance-critical algorithms.
-
-Since elements of an array are stored contiguously in memory, accessing an element requires knowing its size: assuming an integer is encoded on 4 bytes, a compiler will know that the $n^\text{th}$ element of an integer array stored at the address $a$ can be accessed by de-referencing the address $a + 4 \times n$. Or, in the case of a higher-level virtual machine, such as the JVM, to avoid tying the implementation to architecture details, each primitive array, such as |int[]| or |double[]| has its own bytecodes to access and update elements, which de-reference the correct address for the given architecture.
-
-Unfortunately, while using primitive arrays offers optimal performance and memory usage, it also makes it difficult to abstract over the type of elements in the array: different types of elements have different sizes so the compiler needs to generate different instructions for array access depending on its element type. In practice, abstracting over the elements in arrays is essential for writing generic data structures, so language developers proposed different approaches to enable abstraction. One example is the template-based way, used in C++ and .NET, where generics are instantiated to primitive types, resolving their size before execution. On the other hand, languages where generics are compiled with erasure, such as Scala, lose the information necessary to resolve the object size at runtime and need to employ more complex mechanisms.
-
-A naive solution, commonly used in dynamic language interpreters which lack static information, is to convert all values stored in the array to object references, through boxing. This fixes the size of objects, since only references are stored in the array regardless of the primitive type. However, compact storage and locality are lost, since boxed primitives contain the additional object headers and can be allocated anywhere on the heap.
-
-A much better approach transforms the Scala code that accesses or updates generic arrays. For example, the code:
-
-\begin{lstlisting-nobreak}
- def first[T](a: Array[T]): T = a(0)
-\end{lstlisting-nobreak}
-
-Is transformed by the Scala compiler to:
-
-\begin{lstlisting-nobreak}
- def first(a: Object): Any =
-   a match {
-     case x: Array[Object] => x(0) // size = reference
-     case x: Array[Int]    => x(0)           // size = integer
-     case x: Array[Double] => x(0) // size = double
-     // and so on for all the primitive types of Scala
-   }
-\end{lstlisting-nobreak}
-
-
-With this transformation, which is similar to the accessor technique presented at the beginning of the section, accessing generic arrays becomes very involved: the program has to match over the possible primitive arrays, and only then it can access the element. This slows down program execution, but it also enforces a strong invariant: a Scala value of type |Array[Int]| is always represented as the JVM primitive integer array, |int[]|, and never as |Array[java.lang.Integer]|, which would require boxing the primitive values. This invariant guarantees that, outside the generic context, array access/update is efficient: an |Array[Int]| is always represented as the JVM primitive |int[]| array, which allows Scala to access and update elements without matching the array type. Therefore, from a language perspective, programmers only pay the extra overhead when using arrays with generics.
-
-Another thing to notice is that the |Array[T]| type in the signature of |first| is transformed into |Object|: at the JVM level, primitive arrays such as |int[]|, |float[]| and |Object[]| have a single common parent class, which is |java.lang.Object|. This explains why there is a need to match the primitive array type: the |Array| class offered by Scala does not really exist, it's simply an abstraction over the primitive arrays offered by the JVM.
-
-\subsubsection{Instantiating Arrays}
-
-Although the array representation invariant looks like a good deal so far, it introduces an unexpected problem: how to instantiate generic arrays? Exactly like accessing or updating an array, instantiating one must abide by the array invariant. Yet, with the erasure transformation, all traces of a generic type parameter |T| are removed, transforming the code:
-
-\begin{lstlisting-nobreak}
- def newArray[T] = new Array[T](10)
-\end{lstlisting-nobreak}
-
-\noindent
-into:
-
-\begin{lstlisting-nobreak}
- def newArray() = /* error: T is erased */
-\end{lstlisting-nobreak}
-
-The |newArray| method should be able to produce any primitive array, based on the type argument of |newArray|:
-
-\begin{lstlisting-nobreak}
- val a1: Array[Long] /* = long[] */ = newArray[Long]
- val a2: Array[Char] /* = char[] */ = newArray[Char]
-\end{lstlisting-nobreak}
-
-% Option 1 : Using a ClassTag for the type parameter can give us this info at runtime.
-\textbf{Reified types.} To address this issue, Scala offers the |ClassTag| mechanism, which can be used to provide runtime information about a type parameter. This allows |newArray| to produce the correct primitive type:
-
-\begin{lstlisting-nobreak}
- def newArray[T: `ClassTag`] = new Array[T](10)
-\end{lstlisting-nobreak}
-
-\noindent
-is compiled to:
-
-\begin{lstlisting-nobreak}
- def newArray(`tag: ClassTag`) = `tag`.newArray(10)
-\end{lstlisting-nobreak}
-
-Since the |ClassTag| object carries runtime information about the type |T|, it can instantiate the correct primitive array. Still, this approach is rarely used in practice because |ClassTag|s are expensive to synthesize, propagate and store.
-To illustrate this, let us consider the following code:
-
-\begin{lstlisting-nobreak}
- def foo[T] = bar[T]
- def bar[T] = baz[T]
- def baz[T] = new Vector[T](10)
-\end{lstlisting-nobreak}
-
-If we want to create a generic |Array| instead of the |Vector|:
-
-\begin{lstlisting-nobreak}
- def baz[T] = `new Array[T](10)` // error: need ClassTag
-\end{lstlisting-nobreak}
-
-But this requires |baz| to have a |ClassTag| passed in:
-
-\begin{lstlisting-nobreak}
- def baz[T: `ClassTag`] = `new Array[T](10)`
-\end{lstlisting-nobreak}
-
-Therefore, to call method |baz|, the caller needs to pass in a |ClassTag| object. When the call is made from non-generic code (e.g. |baz[Int]|), the |ClassTag| is synthesized by the compiler based on the type argument. This bears the cost of synthesis. And there is another cost, of propagation: the |baz| method is also a caller of |bar|, but since |bar|'s  type parameter |T| is erased, the compiler can't synthesize a |ClassTag| object. Instead, it must require its callers to provide it:
-
-\begin{lstlisting-nobreak}
- def bar[T: `ClassTag`] = baz[T]
-\end{lstlisting-nobreak}
-
-Similarly, |foo| must require the |ClassTag| object to be passed from its callers, thus producing the following code:
-
-\begin{lstlisting-nobreak}
- def foo[T: `ClassTag`] = bar[T]
- def bar[T: `ClassTag`] = baz[T]
- def baz[T: `ClassTag`] = `new Array[T](10)`
-\end{lstlisting-nobreak}
-
-This shows that generic code must be transitively modified to propagate |ClassTag| objects in order to allow instantiating arrays, explaining the cost of propagation. Finally, when dealing with objects, |ClassTag| objects have to be stored as fields in the object itself, adding to the program's memory footprint, explaining the storage cost.
-
-\textbf{Breaking the invariant.} Another way to deal with this issue, without using |ClassTag|s, is to always instantiate |Array[AnyRef]| and force the compiler believe it is an |Array[T]|:
-
-\begin{lstlisting-nobreak}
- def baz[T] = `new Array[AnyRef](10).asInstanceOf[Array[T]]`
-\end{lstlisting-nobreak}
-
-This approach forces boxing all elements, so it is known to affect performance. But, even worse, it breaks the array invariant: if the type parameter |T| is instantiated by |Int|, the returned array has type |Array[Int]| but its runtime type is |Object[]| instead of |int[]|.
-
-Therefore this approach can only be used when the array is guaranteed to not escape to outside code. In practice, this approach is used to implement many of the generic collections in the Scala library.
-
-\textbf{Specialized arrays.} When using Scala specialization, the methods are duplicated and the type parameters are statically known. This allows the array invariant to be used to efficiently access arrays:
-
-\begin{lstlisting-nobreak}
- def first[@specialized T](a: Array[T]): T = a(0)
-\end{lstlisting-nobreak}
-
-This will yield multiple variants of |first|, the default -- slow and unoptimized -- one, as well as nine fast specializations:
-
-\begin{lstlisting-nobreak}
- def first(a: Object): Object =
-   a match {
-     ... // all ten cases
-   }
- def first`_I`(a: int[]): int = a(0)
- def first`_J`(a: long[]): long = a(0)
- // and 7 other specialized variants...
-\end{lstlisting-nobreak}
-
-In this case, the generic (inefficient) version of the |first| method is still called in two cases:
-\begin{itemize}
-  \item from erased generic code;
-  \item when the type parameter of |first| is instantiated by a reference type;
-\end{itemize}
-
-Still, optimizing the specialized versions does not eliminate the need for |ClassTag| objects:
-
-\begin{lstlisting-nobreak}
- def newArray[@specialized T]: Array[T] =
-   new Array[T](10)
-\end{lstlisting-nobreak}
-
-Which is translated to:
-
-\begin{lstlisting-nobreak}
- def newArray: Object = // error: no ClassTag
- def newArray_I: int[] = ...
- def newArray_J: long[] = ...
- // and 7 other specialized variants ...
-\end{lstlisting-nobreak}
-
-Inside the generic version of |newArray|, |T| is erased, so there is no way to instantiate the array anymore. And, as we have seen before, we cannot assume that the generic |newArray| will always be called with a reference type parameter:
-
-\begin{lstlisting-nobreak}
- def foo[T] = newArray[T]
- val arr: Array[Int] = foo[Int]
-\end{lstlisting-nobreak}
-
-Therefore, the only correct solution is to require |newArray| to accept a |ClassTag| object, even before the specialized variants are created:
-
-\begin{lstlisting-nobreak}
- def newArray[@specialized T: `ClassTag`]: Array[T] =
-   new Array[T](10)
-\end{lstlisting-nobreak}
-
-Therefore, while specialization does reduce the overhead of accessing primitive arrays, it does not eliminate the need for |ClassTag| objects.
-
-\textbf{Recap.} We have seen three ways to implement generic arrays:
-
-\vspace{-1em}
-\begin{itemize}
-  \item The |ClassTag| approach:
-    \begin{compactitem}
-      \item \textem{Advantage:} Solves the array instantiation problem;
-      \item \textem{Disadvantage:} Has to carry |ClassTag| objects;
-    \end{compactitem}
-  \item Breaking the invariant approach:
-    \begin{compactitem}
-      \item \textem{Advantage:} Solves the array instantiation problem;
-      \item \textem{Disadvantages:} Requires boxing primitives and arrays must not escape;
-    \end{compactitem}
-  \item The specialization approach:
-    \begin{compactitem}
-      \item \textem{Advantage:}	Optimizes array accesses;
-      \item \textem{Disadvantage:} Does not solve the generic array instantiation problem.
-    \end{compactitem}
-\end{itemize}
-\vspace{-1em}
-
-\textbf{Miniboxed arrays.} Would it be possible to combine the three approaches seen so far to produce an alternative Array which does not have any of the disadvantages? In this subsection we present how |MbArray| achieves this, keeping the main advantages of each approach and dropping their disadvantages.
-
-|MbArray| is a generic class that wraps a Scala |Array| but is also able to guarantee it does not escape, thus being similar to the ``Breaking the invariant'' approach. This allows programmers to instantiate |MbArray| objects without the need for a |ClassTag| object. It may seem this path will lead to boxing values in the array, but this is not the case: thanks to the tight integration with miniboxing, the |MbArray| class can reflectively decide what array to instantiate: either an array of objects or an array of long integers (the storage type). Therefore, the underlying array does not box the elements.
-
-Finally, capitalizing on the tight integration with miniboxing, the array access procedures are transformed to optimistically access the underlying array directly, obtaining the miniboxed value right away. This is an opportunistic approach: there is a fast-path, when the storage type of the miniboxed class and the |MbArray| object coincide, or a slow path, when they don't. But, thanks to the guidance from the performance advisories, in the latter case only occurs with the programmer's consent, who knowingly allows the program to take the slow path.
-
-With this approach, the following code:
-
-\begin{lstlisting-nobreak}
- def first(a: MbArray[Int]): Int = a(0)
-\end{lstlisting-nobreak}
-
-Is translated, after erasure, to:
-
-\begin{lstlisting-nobreak}
- def first(a: MbArray): Int =
-   minibox2int(mbArray_apply_J(a, 0))
-\end{lstlisting-nobreak}
-
-Where the |mbArray_apply| method contains the optimistic assumption that the |MbArray| is going to contain the miniboxed version of the |MbArray| class, containing an underlying array of long integers:
-
-\begin{table}[t]
-  \centering
-  \begin{tabularx}{0.48\textwidth}{|g *{3}{|Y}|} \hline
-    \rowcolor{Gray}
-    \textbf{Benchmark} & \textbf{Generic}      & \textbf{Miniboxed}     & \textbf{Miniboxed} \\
-    \rowcolor{Gray}    &                       &  some                  &  all               \\
-    \rowcolor{Gray}    &                       &  advisories            &  advisories        \\
-    \rowcolor{Gray}    &                       &  heeded                &  heeded            \\ \hline
-    1st run            &               4192 ms &               3082 ms &             1346 ms \\
-    2nd run            &               4957 ms &               2998 ms &             1187 ms \\
-    3rd run            &               4755 ms &               3017 ms &             1178 ms \\
-    4th run            &               3969 ms &               2535 ms &             1094 ms \\
-    5th run            &               4073 ms &               2615 ms &             1163 ms \\ \hline
-  \end{tabularx}
-  \vspace{-2mm}
-  \caption{Speedups based on performance advisories, PNWScala}
-  \label{table:pureimage}
-  \vspace{-1em}
-\end{table}
-
-\begin{table}[b]
-  \begin{tabularx}{0.48\textwidth}{|g *{1}{|Y}|} \hline
-    \rowcolor{Gray}
-    \textbf{Transformation} & \textbf{Running time}  \\ \hline
-    Monomorphic             &              318.1 ms  \\
-    Specialized             &              322.5 ms  \\
-    Miniboxed + Tuples      &              323.2 ms  \\
-    Miniboxed               &              726.8 ms  \\
-    Generic                 &              684.4 ms  \\ \hline
-  \end{tabularx}
-  \vspace{-2mm}
-  \caption{Sorting 1M tuples using quicksort.}
-  \label{table:tuple}
-  \vspace{-1em}
-\end{table}
-
-\begin{lstlisting-nobreak}
- def mbArray_apply_J[T](T_Type: Byte, a: MbArray[T], idx: Int): Long =
-   a match {
-     case x: MbArray_J => x.apply_J(idx)
-     case x: MbArray_L => box2minibox(x.apply_L(idx))
-   }
-\end{lstlisting-nobreak}
-
-In this case, going through the fast path does not require boxing but only a conversion from the miniboxed encoding to the unboxed integer. On the other hand, the slow path accesses an array of objects and transforms the boxed value into a miniboxed one, paying the cost of handling the boxed value.
-
-To conclude, the opportunistic nature of the |MbArray| coupled with performance advisories and miniboxing integration, allows it to have the following properties:
-\begin{compactitem}
-  \item Solves the array instantiation problem (no |ClassTag|s);
-  \item Stores miniboxed values, which are more efficient than boxing;
-  \item Accesses elements efficiently (if advisories are heeded).
-\end{compactitem}
-
-The next section presents a set of benchmarks that show how these transformations impact performance.
-
+% Arrays provide efficient memory usage and constant random access time, thanks to the elements being stored in a contiguous fashion. This is also optimal from a low level perspective as it cooperates well with processor caches, thanks to the spatial locality of the elements. For these reasons, arrays are commonly used as the underlying storage in high level collections, and are the container of choice for implementing performance-critical algorithms.
+%
+% Since elements of an array are stored contiguously in memory, accessing an element requires knowing its size: assuming an integer is encoded on 4 bytes, a compiler will know that the $n^\text{th}$ element of an integer array stored at the address $a$ can be accessed by de-referencing the address $a + 4 \times n$. Or, in the case of a higher-level virtual machine, such as the JVM, to avoid tying the implementation to architecture details, each primitive array, such as |int[]| or |double[]| has its own bytecodes to access and update elements, which de-reference the correct address for the given architecture.
+%
+% Unfortunately, while using primitive arrays offers optimal performance and memory usage, it also makes it difficult to abstract over the type of elements in the array: different types of elements have different sizes so the compiler needs to generate different instructions for array access depending on its element type. In practice, abstracting over the elements in arrays is essential for writing generic data structures, so language developers proposed different approaches to enable abstraction. One example is the template-based way, used in C++ and .NET, where generics are instantiated to primitive types, resolving their size before execution. On the other hand, languages where generics are compiled with erasure, such as Scala, lose the information necessary to resolve the object size at runtime and need to employ more complex mechanisms.
+%
+% A naive solution, commonly used in dynamic language interpreters which lack static information, is to convert all values stored in the array to object references, through boxing. This fixes the size of objects, since only references are stored in the array regardless of the primitive type. However, compact storage and locality are lost, since boxed primitives contain the additional object headers and can be allocated anywhere on the heap.
+%
+% A much better approach transforms the Scala code that accesses or updates generic arrays. For example, the code:
+%
+% \begin{lstlisting-nobreak}
+%  def first[T](a: Array[T]): T = a(0)
+% \end{lstlisting-nobreak}
+%
+% Is transformed by the Scala compiler to:
+%
+% \begin{lstlisting-nobreak}
+%  def first(a: Object): Any =
+%    a match {
+%      case x: Array[Object] => x(0) // size = reference
+%      case x: Array[Int]    => x(0)           // size = integer
+%      case x: Array[Double] => x(0) // size = double
+%      // and so on for all the primitive types of Scala
+%    }
+% \end{lstlisting-nobreak}
+%
+%
+% With this transformation, which is similar to the accessor technique presented at the beginning of the section, accessing generic arrays becomes very involved: the program has to match over the possible primitive arrays, and only then it can access the element. This slows down program execution, but it also enforces a strong invariant: a Scala value of type |Array[Int]| is always represented as the JVM primitive integer array, |int[]|, and never as |Array[java.lang.Integer]|, which would require boxing the primitive values. This invariant guarantees that, outside the generic context, array access/update is efficient: an |Array[Int]| is always represented as the JVM primitive |int[]| array, which allows Scala to access and update elements without matching the array type. Therefore, from a language perspective, programmers only pay the extra overhead when using arrays with generics.
+%
+% Another thing to notice is that the |Array[T]| type in the signature of |first| is transformed into |Object|: at the JVM level, primitive arrays such as |int[]|, |float[]| and |Object[]| have a single common parent class, which is |java.lang.Object|. This explains why there is a need to match the primitive array type: the |Array| class offered by Scala does not really exist, it's simply an abstraction over the primitive arrays offered by the JVM.
+%
+% \subsubsection{Instantiating Arrays}
+%
+% Although the array representation invariant looks like a good deal so far, it introduces an unexpected problem: how to instantiate generic arrays? Exactly like accessing or updating an array, instantiating one must abide by the array invariant. Yet, with the erasure transformation, all traces of a generic type parameter |T| are removed, transforming the code:
+%
+% \begin{lstlisting-nobreak}
+%  def newArray[T] = new Array[T](10)
+% \end{lstlisting-nobreak}
+%
+% \noindent
+% into:
+%
+% \begin{lstlisting-nobreak}
+%  def newArray() = /* error: T is erased */
+% \end{lstlisting-nobreak}
+%
+% The |newArray| method should be able to produce any primitive array, based on the type argument of |newArray|:
+%
+% \begin{lstlisting-nobreak}
+%  val a1: Array[Long] /* = long[] */ = newArray[Long]
+%  val a2: Array[Char] /* = char[] */ = newArray[Char]
+% \end{lstlisting-nobreak}
+%
+% % Option 1 : Using a ClassTag for the type parameter can give us this info at runtime.
+% \textbf{Reified types.} To address this issue, Scala offers the |ClassTag| mechanism, which can be used to provide runtime information about a type parameter. This allows |newArray| to produce the correct primitive type:
+%
+% \begin{lstlisting-nobreak}
+%  def newArray[T: `ClassTag`] = new Array[T](10)
+% \end{lstlisting-nobreak}
+%
+% \noindent
+% is compiled to:
+%
+% \begin{lstlisting-nobreak}
+%  def newArray(`tag: ClassTag`) = `tag`.newArray(10)
+% \end{lstlisting-nobreak}
+%
+% Since the |ClassTag| object carries runtime information about the type |T|, it can instantiate the correct primitive array. Still, this approach is rarely used in practice because |ClassTag|s are expensive to synthesize, propagate and store.
+% To illustrate this, let us consider the following code:
+%
+% \begin{lstlisting-nobreak}
+%  def foo[T] = bar[T]
+%  def bar[T] = baz[T]
+%  def baz[T] = new Vector[T](10)
+% \end{lstlisting-nobreak}
+%
+% If we want to create a generic |Array| instead of the |Vector|:
+%
+% \begin{lstlisting-nobreak}
+%  def baz[T] = `new Array[T](10)` // error: need ClassTag
+% \end{lstlisting-nobreak}
+%
+% But this requires |baz| to have a |ClassTag| passed in:
+%
+% \begin{lstlisting-nobreak}
+%  def baz[T: `ClassTag`] = `new Array[T](10)`
+% \end{lstlisting-nobreak}
+%
+% Therefore, to call method |baz|, the caller needs to pass in a |ClassTag| object. When the call is made from non-generic code (e.g. |baz[Int]|), the |ClassTag| is synthesized by the compiler based on the type argument. This bears the cost of synthesis. And there is another cost, of propagation: the |baz| method is also a caller of |bar|, but since |bar|'s  type parameter |T| is erased, the compiler can't synthesize a |ClassTag| object. Instead, it must require its callers to provide it:
+%
+% \begin{lstlisting-nobreak}
+%  def bar[T: `ClassTag`] = baz[T]
+% \end{lstlisting-nobreak}
+%
+% Similarly, |foo| must require the |ClassTag| object to be passed from its callers, thus producing the following code:
+%
+% \begin{lstlisting-nobreak}
+%  def foo[T: `ClassTag`] = bar[T]
+%  def bar[T: `ClassTag`] = baz[T]
+%  def baz[T: `ClassTag`] = `new Array[T](10)`
+% \end{lstlisting-nobreak}
+%
+% This shows that generic code must be transitively modified to propagate |ClassTag| objects in order to allow instantiating arrays, explaining the cost of propagation. Finally, when dealing with objects, |ClassTag| objects have to be stored as fields in the object itself, adding to the program's memory footprint, explaining the storage cost.
+%
+% \textbf{Breaking the invariant.} Another way to deal with this issue, without using |ClassTag|s, is to always instantiate |Array[AnyRef]| and force the compiler believe it is an |Array[T]|:
+%
+% \begin{lstlisting-nobreak}
+%  def baz[T] = `new Array[AnyRef](10).asInstanceOf[Array[T]]`
+% \end{lstlisting-nobreak}
+%
+% This approach forces boxing all elements, so it is known to affect performance. But, even worse, it breaks the array invariant: if the type parameter |T| is instantiated by |Int|, the returned array has type |Array[Int]| but its runtime type is |Object[]| instead of |int[]|.
+%
+% Therefore this approach can only be used when the array is guaranteed to not escape to outside code. In practice, this approach is used to implement many of the generic collections in the Scala library.
+%
+% \textbf{Specialized arrays.} When using Scala specialization, the methods are duplicated and the type parameters are statically known. This allows the array invariant to be used to efficiently access arrays:
+%
+% \begin{lstlisting-nobreak}
+%  def first[@specialized T](a: Array[T]): T = a(0)
+% \end{lstlisting-nobreak}
+%
+% This will yield multiple variants of |first|, the default -- slow and unoptimized -- one, as well as nine fast specializations:
+%
+% \begin{lstlisting-nobreak}
+%  def first(a: Object): Object =
+%    a match {
+%      ... // all ten cases
+%    }
+%  def first`_I`(a: int[]): int = a(0)
+%  def first`_J`(a: long[]): long = a(0)
+%  // and 7 other specialized variants...
+% \end{lstlisting-nobreak}
+%
+% In this case, the generic (inefficient) version of the |first| method is still called in two cases:
+% \begin{itemize}
+%   \item from erased generic code;
+%   \item when the type parameter of |first| is instantiated by a reference type;
+% \end{itemize}
+%
+% Still, optimizing the specialized versions does not eliminate the need for |ClassTag| objects:
+%
+% \begin{lstlisting-nobreak}
+%  def newArray[@specialized T]: Array[T] =
+%    new Array[T](10)
+% \end{lstlisting-nobreak}
+%
+% Which is translated to:
+%
+% \begin{lstlisting-nobreak}
+%  def newArray: Object = // error: no ClassTag
+%  def newArray_I: int[] = ...
+%  def newArray_J: long[] = ...
+%  // and 7 other specialized variants ...
+% \end{lstlisting-nobreak}
+%
+% Inside the generic version of |newArray|, |T| is erased, so there is no way to instantiate the array anymore. And, as we have seen before, we cannot assume that the generic |newArray| will always be called with a reference type parameter:
+%
+% \begin{lstlisting-nobreak}
+%  def foo[T] = newArray[T]
+%  val arr: Array[Int] = foo[Int]
+% \end{lstlisting-nobreak}
+%
+% Therefore, the only correct solution is to require |newArray| to accept a |ClassTag| object, even before the specialized variants are created:
+%
+% \begin{lstlisting-nobreak}
+%  def newArray[@specialized T: `ClassTag`]: Array[T] =
+%    new Array[T](10)
+% \end{lstlisting-nobreak}
+%
+% Therefore, while specialization does reduce the overhead of accessing primitive arrays, it does not eliminate the need for |ClassTag| objects.
+%
+% \textbf{Recap.} We have seen three ways to implement generic arrays:
+%
+% \vspace{-1em}
+% \begin{itemize}
+%   \item The |ClassTag| approach:
+%     \begin{compactitem}
+%       \item \textem{Advantage:} Solves the array instantiation problem;
+%       \item \textem{Disadvantage:} Has to carry |ClassTag| objects;
+%     \end{compactitem}
+%   \item Breaking the invariant approach:
+%     \begin{compactitem}
+%       \item \textem{Advantage:} Solves the array instantiation problem;
+%       \item \textem{Disadvantages:} Requires boxing primitives and arrays must not escape;
+%     \end{compactitem}
+%   \item The specialization approach:
+%     \begin{compactitem}
+%       \item \textem{Advantage:}	Optimizes array accesses;
+%       \item \textem{Disadvantage:} Does not solve the generic array instantiation problem.
+%     \end{compactitem}
+% \end{itemize}
+% \vspace{-1em}
+%
+% \textbf{Miniboxed arrays.} Would it be possible to combine the three approaches seen so far to produce an alternative Array which does not have any of the disadvantages? In this subsection we present how |MbArray| achieves this, keeping the main advantages of each approach and dropping their disadvantages.
+%
+% |MbArray| is a generic class that wraps a Scala |Array| but is also able to guarantee it does not escape, thus being similar to the ``Breaking the invariant'' approach. This allows programmers to instantiate |MbArray| objects without the need for a |ClassTag| object. It may seem this path will lead to boxing values in the array, but this is not the case: thanks to the tight integration with miniboxing, the |MbArray| class can reflectively decide what array to instantiate: either an array of objects or an array of long integers (the storage type). Therefore, the underlying array does not box the elements.
+%
+% Finally, capitalizing on the tight integration with miniboxing, the array access procedures are transformed to optimistically access the underlying array directly, obtaining the miniboxed value right away. This is an opportunistic approach: there is a fast-path, when the storage type of the miniboxed class and the |MbArray| object coincide, or a slow path, when they don't. But, thanks to the guidance from the performance advisories, in the latter case only occurs with the programmer's consent, who knowingly allows the program to take the slow path.
+%
+% With this approach, the following code:
+%
+% \begin{lstlisting-nobreak}
+%  def first(a: MbArray[Int]): Int = a(0)
+% \end{lstlisting-nobreak}
+%
+% Is translated, after erasure, to:
+%
+% \begin{lstlisting-nobreak}
+%  def first(a: MbArray): Int =
+%    minibox2int(mbArray_apply_J(a, 0))
+% \end{lstlisting-nobreak}
+%
+% Where the |mbArray_apply| method contains the optimistic assumption that the |MbArray| is going to contain the miniboxed version of the |MbArray| class, containing an underlying array of long integers:
+%
+% \begin{table}[t]
+%   \centering
+%   \begin{tabularx}{0.48\textwidth}{|g *{3}{|Y}|} \hline
+%     \rowcolor{Gray}
+%     \textbf{Benchmark} & \textbf{Generic}      & \textbf{Miniboxed}     & \textbf{Miniboxed} \\
+%     \rowcolor{Gray}    &                       &  some                  &  all               \\
+%     \rowcolor{Gray}    &                       &  advisories            &  advisories        \\
+%     \rowcolor{Gray}    &                       &  heeded                &  heeded            \\ \hline
+%     1st run            &               4192 ms &               3082 ms &             1346 ms \\
+%     2nd run            &               4957 ms &               2998 ms &             1187 ms \\
+%     3rd run            &               4755 ms &               3017 ms &             1178 ms \\
+%     4th run            &               3969 ms &               2535 ms &             1094 ms \\
+%     5th run            &               4073 ms &               2615 ms &             1163 ms \\ \hline
+%   \end{tabularx}
+%   \vspace{-2mm}
+%   \caption{Speedups based on performance advisories, PNWScala}
+%   \label{table:pureimage}
+%   \vspace{-1em}
+% \end{table}
+%
+% \begin{table}[b]
+%   \begin{tabularx}{0.48\textwidth}{|g *{1}{|Y}|} \hline
+%     \rowcolor{Gray}
+%     \textbf{Transformation} & \textbf{Running time}  \\ \hline
+%     Monomorphic             &              318.1 ms  \\
+%     Specialized             &              322.5 ms  \\
+%     Miniboxed + Tuples      &              323.2 ms  \\
+%     Miniboxed               &              726.8 ms  \\
+%     Generic                 &              684.4 ms  \\ \hline
+%   \end{tabularx}
+%   \vspace{-2mm}
+%   \caption{Sorting 1M tuples using quicksort.}
+%   \label{table:tuple}
+%   \vspace{-1em}
+% \end{table}
+%
+% \begin{lstlisting-nobreak}
+%  def mbArray_apply_J[T](T_Type: Byte, a: MbArray[T], idx: Int): Long =
+%    a match {
+%      case x: MbArray_J => x.apply_J(idx)
+%      case x: MbArray_L => box2minibox(x.apply_L(idx))
+%    }
+% \end{lstlisting-nobreak}
+%
+% In this case, going through the fast path does not require boxing but only a conversion from the miniboxed encoding to the unboxed integer. On the other hand, the slow path accesses an array of objects and transforms the boxed value into a miniboxed one, paying the cost of handling the boxed value.
+%
+% To conclude, the opportunistic nature of the |MbArray| coupled with performance advisories and miniboxing integration, allows it to have the following properties:
+% \begin{compactitem}
+%   \item Solves the array instantiation problem (no |ClassTag|s);
+%   \item Stores miniboxed values, which are more efficient than boxing;
+%   \item Accesses elements efficiently (if advisories are heeded).
+% \end{compactitem}
+%
+% The next section presents a set of benchmarks that show how these transformations impact performance.
+%

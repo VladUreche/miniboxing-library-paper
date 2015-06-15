@@ -1,13 +1,13 @@
 \section{Interoperating with Existing Library Constructs}
 \label{sec:library}
 
-There is a clear parallel between the manual lambda specializations that are already in the Java Standard Library and thus cannot be eliminated and the specialized constructs in the Scala Standard Library, which cannot be replaced by a compiler plugin. Project Valhalla brings the ability to specialize generics to Java, while miniboxing brings a new compilation scheme for Scala generics. What is common between these two cases is the hard requirement that the new transformations work well with the predating constructs, which use different compilation schemes. This is the problem of interoperating with existing libraries.
+There is a clear parallel between the manual lambda specializations that are already in the Java Standard Library and thus cannot be eliminated and the specialized constructs in the Scala Standard Library, which cannot be replaced by a compiler plugin. Project Valhalla brings the ability to specialize generics to Java, while miniboxing brings a new compilation scheme for Scala generics. What is common between the two cases is the hard requirement that the new transformations work well with the existing constructs, which use different compilation schemes. This is the problem of interoperating with existing libraries.
 
-In this section we will show how performance regressions occur when miniboxed code interacts with the Scala standard library, which uses either erased generics or the original specialization transformation. To counter these performance regressions, we show three approaches to that efficiently bridge the gap between the miniboxing and specialization compilation schemes. Although this section mostly focuses on the interoperation between miniboxing and specialization, the techniques are general and can be applied to Java lambdas and Valhalla as well.
+In this section we will show how performance regressions occur when miniboxed code interacts with the Scala standard library, which uses either erased generics or the original specialization transformation. To counter these performance regressions, we show three approaches to efficiently bridge the gap between the miniboxing and specialization compilation schemes. Although this section mostly focuses on the interoperation between miniboxing and specialization, the techniques are general and can be applied to Java lambdas and Valhalla as well.
 
 \subsection{The Interoperation Problem}
 
-When interacting with the library from miniboxed code, the programmers forget the fact that library constructs, such as tuples and functions, do not share the same compilation scheme. Thus, they expect the same performance and flexibility as when using miniboxed classes. However, calling specialized code from miniboxed code and vice-versa is not trivial:
+When interacting with the library from miniboxed code, the programmers forget the fact that library constructs, such as tuples and functions, do not share the same compilation scheme. Thus, they expect the same performance and flexibility as when using miniboxed classes. However, calling specialized code from miniboxed methods and vice-versa is not trivial:
 
 \begin{lstlisting-nobreak}
  def spec[@specialized T](t: T): String = t.toString
@@ -25,7 +25,7 @@ The translated low-level code is:
  def mbox`_M`(T_Type: byte, t: long): String = `???`
 \end{lstlisting-nobreak}
 
-The reference-based |mbox| and |spec| methods can directly call each other, since there is a 1 to 1 correspondence. The problem is that, unlike these two methods, none of the unboxed variants have a 1 to 1 correspondence, leaving the interoperation between miniboxing and specialization to occur through boxed values.
+The reference-based |mbox| and |spec| methods can directly call each other, since there is a 1 to 1 correspondence. The problem is that, unlike these two methods, none of the specialized variants have a 1 to 1 correspondence. This only leaves the reference-based methods as candidates for the interoperation between miniboxing and specialization.
 
 Although it may seem like |mbox_M| could directly invoke |spec_J|, since the argument types match, this would be incorrect, as the value |t| in |mbox_M| can be any primitive type, encoded as a long, whereas |t| in |spec_J| can only be a long integer. Thus, if we were to call |spec_J| from |mbox_M| passing an encoded boolean, instead of returning either ``true'' or ``false'', it would return the encoded value of the boolean.
 
