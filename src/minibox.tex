@@ -58,7 +58,7 @@ Lacking Project Valhalla's virtual machine support, Scala specialization generat
 
 \subsection{Miniboxing}
 
-Taking a low level perspective, we can observe the fact that all primitive types in the Scala programming language fit within 64 bits. This is the main idea that motivated the miniboxing transformation \cite{miniboxing}: instead of creating separate versions of the code for each primitive type alone, we can create a single one, which stores 64-bit encoded values, much like a tagged union \cite{tagged-unions-lua}. But unlike a tagged union, miniboxing uses the static type information to avoid carrying tags with each value. The previous example:
+Taking a low level perspective, we can observe the fact that all primitive types in the Scala programming language fit within 64 bits. This is the main idea that motivated the miniboxing transformation \cite{miniboxing}: instead of creating separate versions of the code for each primitive type alone, we can create a single one, which stores 64-bit encoded values, much like C's untagged union \cite{tagged-unions-lua}. But unlike a tagged union, miniboxing uses the static type information to avoid carrying tags with each value. The previous example:
 
 \begin{lstlisting-nobreak}
  def identity[`@miniboxed` T](t: T): T = t
@@ -110,7 +110,7 @@ So far, we have only looked at methods, but transforming classes poses even grea
 Project Valhalla takes a straight-forward approach to specialization: classes are duplicated and all previous references to the type parameters are transformed. Given the linked list node class:
 
 \begin{lstlisting-nobreak}
- public class Node<T> {
+ public class Node<`any` T> {
    T head;
    Node<T> tail;
 
@@ -132,7 +132,8 @@ Project Valhalla takes a straight-forward approach to specialization: classes ar
 When there is a need for the |Node| class specialized for |int|, the Project Valhalla transformation uses the classloader support to transform references to |T| into |int|:
 
 \begin{lstlisting-nobreak}
- public class Node_{T=int} { // Node<int> in the syntax
+ // Node_{T=int} corresponds to Node<int> in the code:
+ public class Node_{T=int} implements Node_any {
    int head;
    Node_{T=int} tail;
 
@@ -151,7 +152,7 @@ When there is a need for the |Node| class specialized for |int|, the Project Val
  }
 \end{lstlisting-nobreak}
 
-The effect of this translation is that the only common superclass of |Node| and |Node_{T=int}| is |Object|. Yet, for an erased generic method, such as:
+The effect of this translation is that it produces |Node_{T=int}|, which handles unboxed |int| values. Yet, for an erased generic method, such as:
 
 \begin{lstlisting-nobreak}
 static <U> U getNodeTail(Node<U> spec) {
@@ -167,7 +168,23 @@ static Object getNodeTail(Node spec) {
 }
 \end{lstlisting-nobreak}
 
-Therefore, the |getNodeTail| method cannot handle any of the specialized variants of class |Node|, unless it is specialized itself. The same occurs when abstracting using wildcard type: |Node<?>| is erased to |Node| and is not compatible with |Node_{T=int}|. While this transformation has the advantage of simplicity, a slightly more complex transformation can achieve compatibility with erased generics.
+Therefore, the |getNodeTail| method cannot handle any of the specialized variants of class |Node|, which are not subclasses of |Node|. Still, there is another way that erased code can handle specialized generics.
+
+In the initial prototype as of December 2014, the only common parent of classes |Node| and |Node_{T=int}| was |Object|. As of August 2015, the translation has been improved to automatically introduce the |Node_any| interface that serves as a common supertype of |Node| and |Node_{T=int}|. This enables programmers to abstract over specialized classes:
+
+\begin{lstlisting-nobreak}
+`Node<any>` node = `new Node<int>(5, null)`;
+System.out.println(`node.getValue()`);
+\end{lstlisting-nobreak}
+
+Which is translated to the bytecode:
+
+\begin{lstlisting-nobreak}
+`Node_any` node = `new Node_{T=int}(5, null)`;
+System.out.println(`node.getValue()`);
+\end{lstlisting-nobreak}
+
+This approach is called an ``erased view'', since the specialized class can be accessed in a uniform, erased-like manner through the |Node_any| interface. However, the call to |getValue()| boxes the integer, returning an object, introducing a silent performance regression. The miniboxing translation increases the compatibility, allowing both code patterns above, at the expense of adding more silent performance regressions.
 
 \subsection{Class Transformation in Miniboxing}
 
@@ -291,7 +308,7 @@ Unfortunately, interoperating with erased generics violates both invariants. Con
 
 \begin{lstlisting-nobreak}
  def newNodeErased[T](head: T) =
-   new Node[T](t, null)
+   new Node[T](head, null)
 \end{lstlisting-nobreak}
 
 During the compilation of this method, using to erased generics, the compiler is forced to make a static (compile-time) choice: Which class to instantiate for the |new Node[T]|?
@@ -300,7 +317,7 @@ Since |newNodeErased| can be called with both (boxed) primitives and objects, th
 
 \begin{lstlisting-nobreak}
  def newNodeErased(head: Object) =
-   new `Node_L`(t, null)
+   new `Node_L`(head, null)
 \end{lstlisting-nobreak}
 
 This allows the erased generics to invalidate the invariants:
