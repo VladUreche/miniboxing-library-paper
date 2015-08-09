@@ -2,7 +2,7 @@
 
 Generics on the Java platform are compiled using the erasure transformation, which only supports by-reference values. This causes slowdowns when generics operate on primitive types, such as integers, as they have to be transformed into reference-based objects.
 
-Project Valhalla is an effort to remedy this problem by specializing classes at load-time so they can efficiently handle primitive values. In its current early prototype\footnote{As of August 2015 \cite{valhalla-model2-announcement,valhalla-model2-implementation}.\vspace{-1em}}, the Valhalla compilation scheme prevents certain useful code patterns from being expressed, thus limiting the interaction between specialized and erased generics.
+Project Valhalla is an effort to remedy this problem by specializing classes at load-time so they can efficiently handle primitive values. In its current early prototype\footnote{As of August 2015 \cite{valhalla-model2-announcement,valhalla-model2-implementation}.\vspace{-1em}}, the Valhalla compilation scheme limits the interaction between specialized and erased generics, thus preventing certain useful code patterns from being expressed.
 
 %Recently\footnote{In July 2015 \cite{valhalla-model2-announcement,valhalla-model2-implementation}.\vspace{-1em}}, the Valhalla compilation scheme was extended to enable wildcard quantification over specialized generics, a feature that improves the interaction between specialized and erased generics.
 

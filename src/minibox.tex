@@ -1,7 +1,7 @@
 \section{Compilation Schemes for Generics}
 \label{sec:minibox}
 
-This section describes the different compilation schemes for generics in Scala. We mainly use Scala for the examples, but the discussion can be applied to Java as well. Differences between Scala specialization and Project Valhalla are pointed out along the way, with their implications.
+This section describes the different compilation schemes for generics in Scala. We mainly use Scala for the examples, but the discussion can be applied to Java as well. Differences between Scala specialization and Project Valhalla are pointed out along the way. %, with their implications.
 
 \subsection{Erasure in Scala}
 
@@ -30,7 +30,7 @@ Boxing primitive types requires heap allocation and garbage collection, both of 
 
 \subsection{Specialization}
 
-Specialization \cite{specialization-iuli, iuli-thesis} is a second approach used by the Scala compiler to translate generics and, for methods, is similar to Project Valhalla. It is triggered by the |@specialized| annotation:
+Specialization \cite{specialization-iuli, iuli-thesis} is the second approach used by the Scala compiler to translate generics and, for methods, is similar to Project Valhalla. It is triggered by the |@specialized| annotation:
 
 \begin{lstlisting-nobreak}
  def identity[`@specialized` T](t: T): T = t
@@ -58,7 +58,9 @@ Lacking Project Valhalla's virtual machine support, Scala specialization generat
 
 \subsection{Miniboxing}
 
-Taking a low level perspective, we can observe the fact that all primitive types in the Scala programming language fit within 64 bits. This is the main idea that motivated the miniboxing transformation \cite{miniboxing}: instead of creating separate versions of the code for each primitive type alone, we can create a single one, which stores 64-bit encoded values, much like C's untagged union \cite{tagged-unions-lua}. But unlike a tagged union, miniboxing uses the static type information to avoid carrying tags with each value. The previous example:
+Taking a low level perspective, we can observe the fact that all primitive types in the Scala programming language fit within 64 bits. This is the main idea that motivated the miniboxing transformation \cite{miniboxing}: instead of creating separate versions of the code for each primitive type alone, we can create a single one, which stores 64-bit encoded values, much like C's untagged union.
+%Yet, unlike a C union, which cannot distinguish the original type of the value, miniboxing uses static reified type information to record the type of primitive that is stored.
+The previous example:
 
 \begin{lstlisting-nobreak}
  def identity[`@miniboxed` T](t: T): T = t
@@ -73,7 +75,7 @@ Is compiled\footnote{In the rest of the paper we assume the miniboxing Scala com
  val five: int= `minibox2int`(identity`_M`(`int2minibox`(5)))
 \end{lstlisting-nobreak}
 
-Alert readers will notice the |minibox2int| and |int2minibox| transformations act exactly like the boxing coercions in the case of erased generics. This is true: the values are being coerced to the miniboxed representation, much like in the case of erasure. Yet, our benchmarks on the Java Virtual Machine platform have shown that the miniboxing conversion cost is completely eliminated when compiling the code to native 64-bit assembly code. Further benchmarking has shown that the code matches the performance of specialized code within a 10\% slowdown due to coercions \cite{miniboxing}, compared to a 10x slowdown in the case of boxing.
+Alert readers will notice the |minibox2int| and |int2minibox| transformations act exactly like the boxing coercions in the case of erased generics. This is true: the values are being coerced to the miniboxed representation, much like boxing in the case of erasure. Yet, our benchmarks on the Java Virtual Machine platform have shown that the miniboxing conversion cost is completely eliminated when just-in-time compiling to native 64-bit code. Further benchmarking has shown that the code matches the performance of specialized code within a 10\% slowdown due to coercions \cite{miniboxing}, compared to a 10x slowdown in the case of boxing.
 
 There is an ellipsis in the definition of the |identity_M| method, which stands for what we call a type byte: a byte describing the type encoded in the long integer, allowing operations such as |toString|, |hashCode| or |equals| to be executed correctly on encoded values:
 
@@ -101,7 +103,7 @@ It automatically gets transformed in the compiler pipeline to:
  string`_M`(BOOL, bool2minibox(true))
 \end{lstlisting-nobreak}
 
-Knowing the type byte, the |minibox2string| can do its magic: decoding the long integer into a ``true'' or ``false'' string, depending on the encoded value. Although seemingly simple, the code transformation to implement the miniboxing transformation is quite tricky \cite{miniboxing-linkedlist, ldl, ildl-tech}.
+Knowing the type byte, the |minibox2string| can do its magic: decoding the long integer into a ``true'' or ``false'' string, depending on the encoded value. Although seemingly simple, the code transformation to implement the miniboxing transformation is actually rather tricky \cite{miniboxing-linkedlist, ldl, ildl-tech}.
 
 So far, we have only looked at methods, but transforming classes poses even greater challenges.
 
@@ -136,7 +138,10 @@ When there is a need for the |Node| class specialized for |int|, the Project Val
  public class Node_{T=int} implements Node_any {
    int head;
    Node_{T=int} tail;
+   ...
+\end{lstlisting-nobreak}
 
+\begin{lstlisting-nobreak}
    public Node(int head, Node_{T=int} tail) {
      this.head = head;
      this.tail = tail;
@@ -152,7 +157,7 @@ When there is a need for the |Node| class specialized for |int|, the Project Val
  }
 \end{lstlisting-nobreak}
 
-The effect of this translation is that it produces |Node_{T=int}|, which handles unboxed |int| values. Yet, for an erased generic method, such as:
+The load-time translation produces |Node_{T=int}|, which handles unboxed |int| values. The fact that |Node_{T=int}| is not a subclass of |Node| negatively impacts the interoperation with erasure. Let us take an example method, compiled with erasure:
 
 \begin{lstlisting-nobreak}
 static <U> U getNodeTail(Node<U> spec) {
@@ -160,7 +165,7 @@ static <U> U getNodeTail(Node<U> spec) {
 }
 \end{lstlisting-nobreak}
 
-The generated bytecode is:
+The corresponding bytecode is:
 
 \begin{lstlisting-nobreak}
 static Object getNodeTail(Node spec) {
@@ -168,27 +173,33 @@ static Object getNodeTail(Node spec) {
 }
 \end{lstlisting-nobreak}
 
-Therefore, the |getNodeTail| method cannot handle any of the specialized variants of class |Node|, which are not subclasses of |Node|. Still, there is another way that erased code can handle specialized generics.
+Since |Node_{T=int}| is not a subclass of |Node|, the |getNodeTail| method cannot handle specialized instantiations of |Node| as arguments, forcing the compiler to reject code patterns such as |getNodeTail(new Node<int>(...))|.
+% Therefore, the |getNodeTail| method cannot handle any of the specialized variants of class |Node|, which are not subclasses of |Node|. Therefore, calls such as
+This limits the interaction between erased and specialized generics and prevents many useful code patterns from being expressed. In turn, it prolongs the time necessary to adopt specialization: if a single generic library is compiled with erasure, its clients need to use erasure as well, since the specialized values cannot be passed to that library.
 
-In the initial prototype as of December 2014, the only common parent of classes |Node| and |Node_{T=int}| was |Object|. As of August 2015, the translation has been improved to automatically introduce the |Node_any| interface that serves as a common supertype of |Node| and |Node_{T=int}|. This enables programmers to abstract over specialized classes:
+Acknowledging the importance of allowing erased methods to handle specialized instances, a solution was later introduced: In the initial prototype, as of December 2014, the only common parent of classes |Node| and |Node_{T=int}| was |Object|. However, as of August 2015, the translation has been improved to automatically introduce the |Node_any| interface which serves as a common supertype of |Node| and its specializations (e.g. |Node_{T=int}|). Aside from simplifying the translation from JVM languages to Valhalla bytecode, this change also enables programmers to abstract over specialized classes:
 
 \begin{lstlisting-nobreak}
+// Node<any> acts as the Node<?> wildcard, except for
+// the fact that it also accepts specialized versions:
 `Node<any>` node = `new Node<int>(5, null)`;
 System.out.println(`node.getValue()`);
 \end{lstlisting-nobreak}
 
-Which is translated to the bytecode:
+This example is translated to the following bytecode:
 
 \begin{lstlisting-nobreak}
 `Node_any` node = `new Node_{T=int}(5, null)`;
-System.out.println(`node.getValue()`);
+System.out.println(`node.getValue()`/* of type Object */)
 \end{lstlisting-nobreak}
 
-This approach is called an ``erased view'', since the specialized class can be accessed in a uniform, erased-like manner through the |Node_any| interface. However, the call to |getValue()| boxes the integer, returning an object, introducing a silent performance regression. The miniboxing translation increases the compatibility, allowing both code patterns above, at the expense of adding more silent performance regressions.
+The |Node_any| interface is called an ``erased view'', since it enables accessing the specialized class in a uniform, erased-like manner. However, the call to |getValue()| boxes the integer, returning an object, so it introduces an inefficient boxing operation, which slows down the program. This is the cost paid for interoperability.
+
+The miniboxing translation allows erased, specialized and miniboxed code to freely interact, enabling both code patterns above. However, this is done at the expense of adding even more boxing operations, which introduce silent performance regressions.
 
 \subsection{Class Transformation in Miniboxing}
 
-Scala specialization \cite{iuli-thesis, specialization-iuli} introduced a better class translation, which is compatible to erased generics. Miniboxing \cite{miniboxing} inherited and adapted this scheme, addressing two of its major drawbacks, namely the double fields and broken inheritance. For this reason, we will present the class translation scheme in miniboxing directly.
+Scala specialization \cite{iuli-thesis, specialization-iuli} introduced a better class translation, which is compatible to erased generics. Miniboxing \cite{miniboxing} inherited and adapted this scheme, addressing two of its major drawbacks, namely the double fields and broken inheritance. For this reason, we will present the miniboxed class translation scheme directly.
 
 The main challenge of interoperating with erased generics is to preserve the inheritance relation while providing specialized variants of the class, where fields are encoded as miniboxed long integers instead of |Object|s. Let us take the linked list node class again, this time written in Scala:
 
@@ -208,7 +219,7 @@ The Scala compiler desugars the class to (some aspects omitted):
 There are three subtleties in the |Node| translation:
 \begin{compactitem}
   \item First, there should be two versions of the class: one where |_head| is miniboxed, called |Node_M| and another one where |_head| is an |Object|, called |Node_L|;
-  \item Then, types like |Node[_]|, which corresponds to Java's wildcard |Node<?>| can be instantiated by both classes, so the two need to share a common interface;
+  \item Then, types like |Node[_]|, which corresponds to Java's wildcard |Node<any>| can be instantiated by both classes, so the two need to share a common interface, the ``erased view'';
   \item Finally, this shared interface has to contain the specialized accessors corresponding to both classes (so both classes should implement all the methods).
 \end{compactitem}
 
@@ -217,7 +228,9 @@ Given these constraints, miniboxing compiles |Node| to an interface:
 \begin{lstlisting-nobreak}
  interface Node {
    def head(): Object           // reference-based accessor
-   def head_M(...): long // miniboxed acccesor
+   def head_M(...): long // specialized acccesor, which
+                                // is not present in the
+                                // Valhalla translation
    def tail: Node[T]
  }
 \end{lstlisting-nobreak}
@@ -254,15 +267,16 @@ And, when |Node| is instantiated with a miniboxed type parameter:
 
 \begin{lstlisting-nobreak}
  def newNode[`@miniboxed` T](t: T) =
-   new Node[T](t, null)
+   new `Node[T]`(t, null)
 \end{lstlisting-nobreak}
 
 The code is translated to:
 
 \begin{lstlisting-nobreak}
- def newNode(t: Object) = new Node`_L`(t, null)
- def newNode`_M`(T_Type: byte, t: long) =
-   new Node`_M`(T_Type, t, null)
+ def newNode(t: Object) =
+   new `Node_L`(t, null)
+ def newNode_M(T_Type: byte, t: long) =
+   new `Node_M`(T_Type, t, null)
 \end{lstlisting-nobreak}
 
 The translation hints at an optimization that can be done: given a value of type |Node[T]| where |T| is either a primitive or known to be miniboxed, the compiler can call |head_M| instead of |head|, skipping a conversion. The following code:
@@ -272,7 +286,7 @@ The translation hints at an optimization that can be done: given a value of type
  n.head
 \end{lstlisting-nobreak}
 
-Gets translated to:
+Is translated to:
 
 \begin{lstlisting-nobreak}
  val n = new `Node_M`(..., 3, null)
@@ -288,20 +302,24 @@ The same occurs when a type parameter is miniboxed:
 This method is translated to:
 
 \begin{lstlisting-nobreak}
- def getFirst(n: Node): Object = n.head
- def getFirst`_M`(T_Type: byte, n: Node) = n.head`_M`(T_Type)
+ def getFirst(n: Node): Object =
+   n.head                 // using reference accessor
+ def getFirst`_M`(T_Type: byte, n: Node) =
+   n.head`_M`(T_Type) // using miniboxed accessor
 \end{lstlisting-nobreak}
 
 At this point, you may be wondering why the |getFirst| method receives a parameter of type |Node| instead of |Node_L|, or, respectively, |Node_M|. The reason is interoperability with erased generics.
 
+\vspace{-0.3em}
 %This translation scheme, although not the only one, satisfies the three criteria set above.
 
 \subsection{Interoperating with Erased Generics}
+\vspace{-0.2em}
 
 So far, we have seen the following two invariants:
 \begin{compactitem}
- \item |Node_L| stands for linked lists containing references, and we call the |head| accessor on it;
- \item |Node_M| stands for linked lists containing primitive types and we call the |head_M| accessor on it.
+ \item we call the |head_M| accessor on receivers of type |Node[T]| where |T| is either miniboxed or is a primitive type, optimistically assuming the receiver is an instance of |Node_M|;
+ \item otherwise, we call the |head| accessor, assuming the receiver is an instantiation of class |Node_L|.
 \end{compactitem}
 
 Unfortunately, interoperating with erased generics violates both invariants. Consider the following method:
@@ -313,28 +331,49 @@ Unfortunately, interoperating with erased generics violates both invariants. Con
 
 During the compilation of this method, using to erased generics, the compiler is forced to make a static (compile-time) choice: Which class to instantiate for the |new Node[T]|?
 
-Since |newNodeErased| can be called with both (boxed) primitives and objects, the only valid choice is |Node_L|, which can handle both cases. Contrarily, |Node_M| can't handle references, since object pointers are not directly accessible in the JVM: % due to garbage collector restrictions:
+Since |newNodeErased| can be called with both (boxed) primitives and objects, the only valid choice is |Node_L|, which can handle both cases. Contrarily, |Node_M| can't handle references, since object pointers are not directly accessible in the JVM. Thus, we have: % due to garbage collector restrictions:
 
 \begin{lstlisting-nobreak}
  def newNodeErased(head: Object) =
    new `Node_L`(head, null)
 \end{lstlisting-nobreak}
 
-This allows the erased generics to invalidate the invariants:
+Which allows the erased generics to invalidate the invariants:
 
 \begin{lstlisting-nobreak}
  val m = newNodeErased[Int](3)
  n.head
 \end{lstlisting-nobreak}
 
-Which is translated to:
+% Resulting in the bytecode:
 
 \begin{lstlisting-nobreak}
- val m = newNodeErased(Integer.valueOf(3))    // Node_L
- n.`head_M`(INT)// implicit assumption: class is Node_M
+ val m = newNodeErased(Integer.valueOf(3))                  // Node_L
+ n.`head_M`(INT)  // assumption: receiver has type Node_M
 \end{lstlisting-nobreak}
 
-This way, the call |head_M| occurs on a |Node_L| class. The symmetric case can also occur, calling |head| on a |Node_M| class. And, what is worse, we can end up with a |Node_L| class storing a primitive value, which means it has to be boxed. While the compilation scheme is robust enough to handle the mix-up, the problem is converting data between representations: from boxed to miniboxed and back. This kills performance.
+This way, the call to |head_M| occurs on a |Node_L| instance. The symmetric case can also occur, calling |head| on a |Node_M| class. And, what is worse, we can end up with a |Node_L| class storing a primitive value, which means it will be boxed.
+
+Fortunately, by never promising more than the erased view, |Node|, the compilation scheme is robust enough to handle the mix-up. This allows correctly compiling both patterns in the Valhalla example:
+
+\begin{lstlisting-nobreak}
+ def getNodeTail[T](t: `Node[T]`): `Node[T]` = t.tail
+ getNodeTail(new Node[Int](5, null))
+ val node: `Node[_]` = new Node[Int](5, null)
+ node.tail()
+\end{lstlisting-nobreak}
+
+By producing the following bytecode:
+
+\begin{lstlisting-nobreak}
+ def getNodeTail(t: `Node`): `Node` = t.tail()
+ getNodeTail(new Node_M(...))                // Node_M impls Node
+ val node: `Node` = new Node_M(...) // Node_M impls Node
+ node.tail() // call through the Node interface
+\end{lstlisting-nobreak}
+
+Both code patterns can be compiled, thanks to the fact that both |Node_L| and |Node_M| implement the erased view, |Node|. Yet, calls across specializations need to convert data between rep\-re\-sen\-ta\-tions: from boxed to miniboxed and back. This kills performance.
+
 %
 %
 %  the class accesses the boxed value, transforms it into a miniboxed value and then returns it. This incurs an important overhead compared to calling |head_M| on a |Node_M| class.
