@@ -71,20 +71,6 @@ Operations used for benchmarking the miniboxed and generic variants of |RRB-Vect
 
 The numbers show that for |builder|, |map| and |fold| tests there is a speedup of at least 2x when miniboxing transformation is used which is expected as both boxing and unboxing of the value parameters are present there. On the other hand, |reverse| operation does not require any boxing and therefore there is no any speedup achieved. However, numbers from |reverse| test show that miniboxing does not introduce any noticeable slowdowns as well. To conclude, by following the advises given by miniboxing plugin, the user who does not have any familiarity with the code, for relatively short period of time (if we consider the time needed for development of the |RRB-Vector| which was approximately 4 months and that implementation has \textasciitilde3K LOC) can improve the performance of some operations by 50\%.
 
-
-%1st step: 14 warnings + 5 MbArray warnings = 19 total -> 8 @miniboxed added and 5 new Array changed to MbArray.empty
-%2nd step: 9 warnings + 1 Numeric warning + 1 MbArray = 11 total -> 8 @miniboxed, 1 MbNumeric instead of Numeric
-%3rd: 5 warnings-> 4 @miniboxed
-%4: 4 warnings -> 2 @miniboxed
-%5: 1 warning -> 1 @miniboxed
-%6: 0 warnings -> 0 @miniboxed
-
-%7: display0 to MbArray
-%8: 1 warning -> 1 @miniboxed
-%9: 1 warning -> 1 @miniboxed
-
-
-
 \subsubsection{Performance advisories} can be used to improve the performance of Scala programs without any previous knowledge of how the transformation works. This was shown at the PNWScala 2014 developer conference \cite{pnwscala-conf}, where Vlad Ureche presented how the miniboxing plugin guides the programmer into improving the performance of a mock-up of a image processing library by as much as 4x \cite{pnwscala-pureimage}. The presentation was recorded and the performance numbers are included in Table \ref{table:pureimage} for reference.
 
 \subsubsection{Tuple accessors} have been tested by implementing a tuple sorting benchmark using a generic quicksort algorithm. Table \ref{table:tuple} shows the results for sorting 1 million tuples based on their first element. We used different transformations for the generic quicksort algorithm: first, we benchmarked the erased quicksort performance, which, as expected, performs slowly. Surprisingly, the miniboxed version without tuple support is even worse, 7\% slower than generic. Then, adding tuple accessor support to the miniboxing transformation improved the performance by 2x, making it comparable to the original specialization transformation and the monomorphic (non-generic) version of the quicksort algorithm.

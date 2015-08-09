@@ -5,8 +5,6 @@ This section describes the different compilation schemes for generics in Scala. 
 
 \subsection{Erasure in Scala}
 
-% Generics are crucial to productivity. They allow programmers to design algorithms and data structures that operate identically regardless of the data used, fostering code reuse. For example, a |Vector[T]| can be instantiated for any type, whether for numbers, strings or CPU threads. However, on the low level, data comes in different shapes and sizes: from 1-bit booleans to 64-bit long integers, floating point numbers, characters, value classes \cite{gosling-value-classes,rose-value-classes-tearing,sip-value-classes} and objects. In a |Vector[Int]|, getters and setters receive integer values of 32-bits while in |Vector[Double]| they receive 64-bit double-precision floating-point numbers.
-
 The current compilation scheme for generics in both Java and Scala is called erasure, and is the simplest compilation scheme possible for generics. Erasure requires all data, regardless of its type, to be passed in by reference, pointing to heap objects. Let us take a simple example, a generic |identity| method written in Scala:
 
 \begin{lstlisting-nobreak}
@@ -58,9 +56,7 @@ Lacking Project Valhalla's virtual machine support, Scala specialization generat
 
 \subsection{Miniboxing}
 
-Taking a low level perspective, we can observe the fact that all primitive types in the Scala programming language fit within 64 bits. This is the main idea that motivated the miniboxing transformation \cite{miniboxing}: instead of creating separate versions of the code for each primitive type alone, we can create a single one, which stores 64-bit encoded values, much like C's untagged union.
-%Yet, unlike a C union, which cannot distinguish the original type of the value, miniboxing uses static reified type information to record the type of primitive that is stored.
-The previous example:
+Taking a low level perspective, we can observe the fact that all primitive types in the Scala programming language fit within 64 bits. This is the main idea that motivated the miniboxing transformation \cite{miniboxing}: instead of creating separate versions of the code for each primitive type alone, we can create a single one, which stores 64-bit encoded values, much like C's untagged union. The previous example:
 
 \begin{lstlisting-nobreak}
  def identity[`@miniboxed` T](t: T): T = t
@@ -373,10 +369,3 @@ By producing the following bytecode:
 \end{lstlisting-nobreak}
 
 Both code patterns can be compiled, thanks to the fact that both |Node_L| and |Node_M| implement the erased view, |Node|. Yet, calls across specializations need to convert data between rep\-re\-sen\-ta\-tions: from boxed to miniboxed and back. This kills performance.
-
-%
-%
-%  the class accesses the boxed value, transforms it into a miniboxed value and then returns it. This incurs an important overhead compared to calling |head_M| on a |Node_M| class.
-%
-% ...The opposite case, calling |head| on a |Node_M| class can occur as well, by passing a linked list to a generic method. This shows how the optimistic assumptions used by the miniboxing and specialization transformations are invalidated by erased generics, thus incurring boxing (\S\ref{sec:advisories}). We will later see how even the inter-operation between specialization and miniboxing needs to go through boxing, producing yet another category of slow paths (\S\ref{sec:library}).
-%
