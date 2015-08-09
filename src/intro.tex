@@ -33,7 +33,7 @@ System.out.println(`box.getValue()`); // boxes the value
 
 These two code patterns could easily be rewritten to make the code compile and to avoid the overhead of boxing. For the first pattern, adding the |any| prefix to the type parameter |U| of method |getBoxValue| would make it specialized as well, allowing it to handle the incoming argument. In the second pattern, the wildcard, which is equivalent to extending |Box<?>| to value types, could be replaced by the exact type, |Box<int>|, eliminating the overhead of boxing. Yet, in the general case, not all code can be changed at will, due to interactions, backward compatibility or because it resides in external libraries. Thus, a better solution would be to have erased and specialized generics interoperate, ideally without the overhead.
 
-The Scala programming language, which also compiles to JVM bytecode, has had compile-time specialization for 6 years \cite{iuli-thesis, specialization-iuli} and currently has three mechanisms for compiling generics: erasure, specialization and a new arrival, miniboxing \cite{miniboxing}. In Scala, all three generics compiation schemes can be freely mixed:
+The Scala programming language, which also compiles to JVM bytecode, has had compile-time specialization for 6 years \cite{iuli-thesis, specialization-iuli} and currently has three mechanisms for compiling generics: erasure, specialization and a new arrival, miniboxing \cite{miniboxing}. In Scala, all three generics compilation schemes can be freely mixed:
 
 \begin{lstlisting-nobreak}
 // The Mbox class is miniboxed by virtue of the type
