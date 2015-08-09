@@ -6,7 +6,8 @@ The array transformation \cite{romain-mbarrays} is beyond the scope of this pape
 The |Array| bulk storage in Scala makes certain assumptions that are not compatible with miniboxing, leading to performance regressions in some corner cases. To address this limitation, we introduced a new type of array, dubbed |MbArry| which integrates very well within the miniboxing framework. However, the |MbArray| API does not match the one in Scala arrays, so we cannot automate the transformation. Instead, we use performance advisories to guide the programmers into switching to |MbArray|:
 
 \begin{lstlisting-nobreak-nolang}
-scala> def newArray[@miniboxed T: ClassTag] = new Array[T](100)
+scala> def newArray[@miniboxed T: ClassTag] =
+       |   new Array[T](100)
 <console>:8: warning: Use MbArray instead of Array to eliminate the need for ClassTags and benefit from seamless interoperability with the miniboxing specialization. For more details about MbArrays, please check the following link: http://scala-miniboxing.org/arrays.html
 \end{lstlisting-nobreak-nolang}
 
