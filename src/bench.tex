@@ -15,6 +15,7 @@
 \end{table}
 
 \begin{table}[b]
+\vspace{-1em}
   \centering
   \begin{tabularx}{0.48\textwidth}{|g *{3}{|Y}|} \hline
     \rowcolor{Gray}
@@ -34,10 +35,16 @@
   \vspace{-1em}
 \end{table}
 
+\vspace{-0.3em}
+
 \section{Benchmarks}
 \label{sec:bench}
 
+\vspace{-0.3em}
+
 In this section we show three different scenarios where miniboxing has significantly improved performance of user programs. We will specifically avoid mentioning benchmarking methodology, as each of the experiments was ran on a different setup. Yet, all three examples show a clear trend: using the techniques shown improve both performance and the programmer experience.
+
+\vspace{-0.3em}
 
 \subsubsection{The RRB-Vector} data structure \cite{rrb-vector-paper} \cite{nicolas-thesis} is an improvement over the immutable |Vector|, allowing it to perform well for data parallel operations. Currently, the immutable |Vector| collection in the Scala library offers very good asymptotic performance over a wide range of sequential operations, but fails to scale well for data parallel operations. The problem is the overhead of merging the partial results obtained in parallel, due to the rigid Radix-Balanced Tree, the |Vector|'s underlying structure. Contrarily, |RRB-Vector| uses Relaxed Radix-Balanced (RRB) Trees, which allow merges to occur in effectively constant time while preserving the sequential operation performance. This enables the |RRB-Vector| to scale up as we would expect when executing data parallel operations. Thanks to the parallel improvement, the |RRB-Vector| data structure is slated to replace the |Vector| implementation in the Scala library in a future release.
 
@@ -47,11 +54,11 @@ Implementation of |RRB-Vector| uses erased generics as a translation for generic
   \begin{tabularx}{0.48\textwidth}{|g *{1}{|Y}|} \hline
     \rowcolor{Gray}
     \textbf{Transformation} & \textbf{Running time}  \\ \hline
-    Monomorphic             &              318.1 ms  \\
-    Specialized             &              322.5 ms  \\
-    Miniboxed + Tuples      &              323.2 ms  \\
-    Miniboxed               &              726.8 ms  \\
-    Generic                 &              684.4 ms  \\ \hline
+    Generic                        &              684.4 ms  \\
+    Miniboxed (no tuple support)   &              726.8 ms  \\
+    Miniboxed (with tuple support) &              323.2 ms  \\
+    Specialized                    &              322.5 ms  \\
+    Monomorphic                    &              318.1 ms  \\ \hline
   \end{tabularx}
   \vspace{-2mm}
   \caption{Sorting 1M tuples using quicksort.}
@@ -63,8 +70,6 @@ Implementation of |RRB-Vector| uses erased generics as a translation for generic
 Operations used for benchmarking the miniboxed and generic variants of |RRB-Vector| implementation are creating the |RRB-Vector| using |RRBVectorBuilder| and invoking |map|, |fold| and |reverse| operations on |RRB-Vector|. ScalaMeter framework \cite{scalameter} is used as a benchmark platform and the measurements are conducted using JDK 1.7 on the machine with processor Intel Core i7-4600U CPU @ 2.10GHz x 4 and with RAM of 12GiB. Results of the benchmark are included in Table \ref{table:rrbvector}.
 
 The numbers show that for |builder|, |map| and |fold| tests there is a speedup of at least 2x when miniboxing transformation is used which is expected as both boxing and unboxing of the value parameters are present there. On the other hand, |reverse| operation does not require any boxing and therefore there is no any speedup achieved. However, numbers from |reverse| test show that miniboxing does not introduce any noticeable slowdowns as well. To conclude, by following the advises given by miniboxing plugin, the user who does not have any familiarity with the code, for relatively short period of time (if we consider the time needed for development of the |RRB-Vector| which was approximately 4 months and that implementation has \textasciitilde3K LOC) can improve the performance of some operations by 50\%.
-
-
 
 
 %1st step: 14 warnings + 5 MbArray warnings = 19 total -> 8 @miniboxed added and 5 new Array changed to MbArray.empty
@@ -80,11 +85,6 @@ The numbers show that for |builder|, |map| and |fold| tests there is a speedup o
 
 
 
-
-
 \subsubsection{Performance advisories} can be used to improve the performance of Scala programs without any previous knowledge of how the transformation works. This was shown at the PNWScala 2014 developer conference \cite{pnwscala-conf}, where Vlad Ureche presented how the miniboxing plugin guides the programmer into improving the performance of a mock-up of a image processing library by as much as 4x \cite{pnwscala-pureimage}. The presentation was recorded and the performance numbers are included in Table \ref{table:pureimage} for reference.
 
-\subsubsection{Tuple accessors} have been tested by Milos Stojanovic by implementing a quicksort-based tuple sorting benchmark \cite{tuple-bench}, which sorts tuples based on their first element. The algorithm used is quicksort and the result shows a 2x speed improvement when the accessors are used. The performance is also on par with both specialized and monomorphic code, the slowdown being at most 5\%. The results are shown in Table \ref{table:tuple}.
-
-TODO: Expand this section, if possible.
-
+\subsubsection{Tuple accessors} have been tested by implementing a tuple sorting benchmark using a generic quicksort algorithm. Table \ref{table:tuple} shows the results for sorting 1 million tuples based on their first element. We used different transformations for the generic quicksort algorithm: first, we benchmarked the erased quicksort performance, which, as expected, performs slowly. Surprisingly, the miniboxed version without tuple support is even worse, 7\% slower than generic. Then, adding tuple accessor support to the miniboxing transformation improved the performance by 2x, making it comparable to the original specialization transformation and the monomorphic (non-generic) version of the quicksort algorithm.
