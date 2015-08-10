@@ -37,6 +37,8 @@
 \newcolumntype{g}{>{\columncolor{Gray}}l}
 \newcolumntype{h}{>{\columncolor{Gray}}c}
 \newcolumntype{i}{>{\columncolor{Gray}}r}
+\newcommand{\iv}[1]{\textcolor{white}{#1}}
+\newcommand{\ing}[0]{ing }
 
 % Lstlisting highlight
 % http://tex.stackexchange.com/a/49309
@@ -114,12 +116,17 @@
 \newlength{\linenumwidth} \setlength{\linenumwidth}{0.9em}% Redefine as required
 \newlength{\numwidth}%
 \setlength{\numwidth}{\widthof{\normalfont\tiny{\-\lst@numberstyle{99}}}}% Up to 2-digit (99) line numbers
+\newcommand{\Improving}[0]{\\[-1.1em]\iv{\ding{61}}\\ Improv\ing}
 \def\lst@PlaceNumber{%
   \makebox[\linenumwidth][l]{%
     \makebox[\numwidth][r]{\normalfont\tiny\lst@numberstyle{\thelstnumber}}%
   }%
 }
 \makeatother
+
+\clubpenalty = 10000
+\widowpenalty = 10000
+\displaywidowpenalty = 10000
 
 %%% How to prevent lstlisting from splitting code between pages?
 %%% http://tex.stackexchange.com/questions/10141/how-to-prevent-lstlisting-from-splitting-code-between-pages
@@ -166,8 +173,6 @@
 % Set paragraphs to a more likeable style
 \setlength{\parskip}{.4\baselineskip}%
 \setlength\parindent{0pt}
-
-\newcommand{\iv}[1]{\textcolor{white}{#1}}
 
 % Centering for tablularx
 \newcolumntype{Y}{>{\centering\arraybackslash}X}

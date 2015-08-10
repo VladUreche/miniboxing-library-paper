@@ -119,7 +119,7 @@ Although we don't have statistically significant data, our experience suggests t
 Once the tuple is cast to a |Tuple1[Int]|, the specialization transformation kicks in and transforms the call to |_1| into a specialized call to |_1_I|, the integer variant. Since the |int2minibox| conversion also takes an unboxed integer, the overhead of boxing is completely eliminated.
 
 
-\subsubsection{The specialized constructors} are motivated by two observations: (1) allocating tuples in the miniboxed code without special support requires boxing and, even worse (2) the tuples created use the reference-based variant of the specialized class, thus voiding the benefits of having added tuple accessors. The code for the tuple constructors is also written by hand and is very similar to the accessor code: it dispatches on the type tags to create tuples of primitive types, which specialization can rewrite to the specialized variants. \iv{Quite a bit of code, but we were too lazy to automate it...}
+\subsubsection{The specialized constructors} are motivated by two observations: (1) allocating tuples in the miniboxed code without special support requires boxing and, even worse (2) the tuples created use the reference-based variant of the specialized class, thus voiding the benefits of having added tuple accessors. The code for the tuple constructors is also written by hand and is very similar to the accessor code: it dispatches on the type tags to create tuples of primitive types, which specialization can rewrite to the specialized variants. \iv{It's quite some code, but we were too lazy to automate it.}
 
 
 \subsubsection{Closing the cycle} is automatically done by the miniboxing plugin when encountering a tuple access followed by a conversion to the miniboxed representation or when the tuple constructor is invoked with all the arguments being transformed from the miniboxed representation to the boxed one. There are two reasons this step needs to be automated:
@@ -219,7 +219,7 @@ Explaining how the code transformation works is beyond the scope of this paper a
 
 \subsubsection{Conversions} can occur in both directions, from |FunctionX| objects to |MbFunctionX| and back.
 
-Converting |FunctionX| objects to their miniboxed counterparts is done using switches that allow the newly created |MbFunctionX| to directly call the unboxed |apply|, skipping boxing:
+Converting |FunctionX| objects to their miniboxed counterparts is done using switches that allow the newly created |MbFunctionX| to directly call the unboxed |apply|, fără boxing:
 
 \begin{lstlisting-nobreak}
  def function0_bridge[R](R_Tag: Byte, f: Function0[R]): MiniboxedFunction0[R] =

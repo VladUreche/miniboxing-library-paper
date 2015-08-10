@@ -13,10 +13,6 @@ The presence of erasure and wildcard-type abstractions (such as |Node[_]|) leads
 
 There key to avoiding these subtle performance regressions is to intercept the class instantiations and method calls that violate the invariant and report actionable advisories to the users, in the form of compiler warnings. Luckily, all the information necessary to detect invariant violations is available during compilation.
 
-% A fundamentally difficult problem with using miniboxing is determining when the code has reverted to using boxed primitives. Having miniboxed code use boxed primitives is most commonly caused by interacting with erased generics and specialization, but can also be caused by technical or design limitations. While all these cases lead to correct and semantically-equivalent code, they do produce noticeable slowdowns.
-
-% When boundary conditions or limitations occur in a typical opaque transformation, the optimization process silently fails, and doesn't give the programmer any useful information about what happened. Instead, the miniboxing transformation provides the programmer with a detailed report of the error followed by the common workaround or links to in-depth discussions on the topic. Using this feature, novice programmers can fine-tune their programs without a thorough understanding of the transformation.
-
 \vspace{-0.6em}
 
 \subsection{Performance Advisories Overview}
@@ -226,40 +222,3 @@ When deciding which miniboxed variant of class |C| to instantiate, we need to be
 \end{lstlisting-nobreak}
 
 As we will see in the benchmarking section (\S\ref{sec:bench}), the performance advisories allow programmers who are not familiar with the transformation to make the changes an expert would otherwise do.
-
-% \subsection{Data Representation Reflection}
-%
-% This section will show how the miniboxing transformation offers a window into what code is running and how it was transformed. Consider the following two examples:
-%
-% \begin{compactitem}
-% \item Having shut off some of the performance advisories, a programmer may still want to guarantee a class is only instantiated in its specialized form using reflection;
-% \item When designing a container, the actions may depend on the types of elements stored: In the immutable |RRB-Vector| \cite{nicolas-thesis} implementation, when elements from the front or back are removed, underlying arrays that store elements can be reused. Here, only starting and stopping indices of the resultant immutable vector are updated. However, if |Vector| is used to store references, reusing previous arrays can result in memory leaks (since the arrays keep a reference to the deleted object for the old vector, but create a reference path between the new vector and the deleted element). In this case, the ideal solution would be to change the behavior of the |Vector| class based on the type argument and only reuse the arrays for primitive types.
-% \end{compactitem}
-%
-% % what is mbreflection
-% The |MbReflection| object allows the programmer to check the internal state of the plugin by reflecting on the type parameters of miniboxed classes and methods. For example, given a method with a miniboxed type parameter |T|, reflection can determine, at run-time, whether |T| is miniboxed, its instantiation, and the type used to store the value:
-%
-% \begin{lstlisting-nobreak}
-%  scala> import MiniboxingReflection._
-%  import MiniboxingReflection._
-%
-%  scala> def bip[@miniboxed T] = s"bip[T = ${`reifiedType[T]`}, miniboxed into a ${`storageType[T]`}]"
-%  defined method bip
-%
-%  scala> bip[Int]
-%  res4: String = bip[T = Int, miniboxed into a Long]
-% \end{lstlisting-nobreak}
-%
-% The method |reifiedType[T]| indicates the type of type parameter instantiation while the |storageType[T]| returns the type used for encoding data. It is also possible to call the method from an erased context, in which case it will report the fact that the type parameter is a reference to a boxed object:
-%
-% \begin{lstlisting-nobreak}
-%  scala> def bop[T] = bip[T]
-%  // backward warning...
-%  defined method bop
-%
-%  scala> bop[Int]
-%  // forward warning...
-%  res5: String = bip[T = Reference, miniboxed into a Reference]
-% \end{lstlisting-nobreak}
-%
-% From an implementation point of view, the reflection methods are simply bridged after duplication to either constant values (in the case of the |_L| variants of the classes and methods) or to the type byte mentioned in \S\ref{sec:minibox}, for the |_M| variants. This is a simple mechanism which offers programmers yet another way to avoid slow paths in their programs.  Other reflection features include the partial evaluation of reflection method calls when the result is statically known and optimized conversion methods that allow converting values to and from the miniboxed representation efficiently. Instead of presenting these features in detail, we will now focus on the inter-operation between miniboxing and specialized library classes, which exposes a completely different type of slow path.
